@@ -23,7 +23,7 @@ AI를 활용해 OPIC(Oral Proficiency Interview) 시험 대비를 도와주는 �
 
 | 메인 화면 | 문제 화면 | 답변 저장 화면 |
 |-----------|-----------|----------------|
-| ![메인 화면](./frontend/assets/main.png) | ![문제 화면](./frontend/assets/question.png) | ![답변 저장 화면](./frontend/assets/answer1.png)<br>![답변 저장 화면2](./frontend/assets/answer2.png) |
+| ![메인 화면](./assets/main.png) | ![문제 화면](./assets/question.png) | ![답변 저장 화면](./assets/answer1.png)<br>![답변 저장 화면2](./assets/answer2.png) |
 
 ---
 
