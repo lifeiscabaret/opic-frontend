@@ -7,7 +7,7 @@ import "@fortawesome/fontawesome-free/css/all.min.css";
 const API_BASE =
   process.env.REACT_APP_API_BASE_URL || "https://opic-backend.onrender.com";
 
-// ✅ MidJourney로 만든 이미지의 "공개 URL"
+// ✅ 아바타 이미지 경로 (env > /public/avatar.png)
 const IMAGE_URL =
   process.env.REACT_APP_AVATAR_IMAGE_URL || `${window.location.origin}/avatar.png`;
 
@@ -21,7 +21,7 @@ const LS = {
   history: "opicHistory",
 };
 
-// 설문 항목
+// 설문 옵션
 const SURVEY = {
   residenceOptions: [
     "개인 주택/아파트 단독 거주",
@@ -36,7 +36,6 @@ const SURVEY = {
     "어학 수업",
     "수강 후 5년 이상 지남",
   ],
-  // 한글 역할명
   roles: ["학생", "사무직", "프리랜서", "파트타이머", "무직", "기타"],
   topics: [
     { key: "intro", label: "Self‑introduction (name, city, family, job/school)" },
@@ -57,7 +56,7 @@ const SURVEY = {
   ],
 };
 
-// D‑ID 아바타 렌더 (텍스트→립싱크 영상 URL 반환)
+// 🗣️ D‑ID: 텍스트를 립싱크 영상 URL로 변환
 async function speakText(text) {
   try {
     const res = await fetch(`${API_BASE}/speak`, {
@@ -70,7 +69,6 @@ async function speakText(text) {
       }),
     });
 
-    // 4xx/5xx 대응: 본문 읽고 의미 있는 에러 로그 남기기
     if (!res.ok) {
       const ct = res.headers.get("content-type") || "";
       const body = await res.text();
@@ -90,8 +88,9 @@ function App() {
   // UI 상태: start | survey | practice | review
   const [ui, setUi] = useState("start");
 
-  // 공통
+  // 공통 상태
   const [serverReady, setServerReady] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   // 설문 상태
   const [level, setLevel] = useState(localStorage.getItem(LS.level) || "IH–AL");
@@ -107,23 +106,18 @@ function App() {
   const [timeLeft, setTimeLeft] = useState(60);
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
-  const [audioURL, setAudioURL] = useState(""); // ✅ 실제로 사용
+  const [audioURL, setAudioURL] = useState("");
   const [memo, setMemo] = useState("");
   const [isFinished, setIsFinished] = useState(false);
   const [savedHistory, setSavedHistory] = useState([]);
   const [openAnswerIndex, setOpenAnswerIndex] = useState(null);
-
-  // 스크롤탑
   const [showScrollTop, setShowScrollTop] = useState(false);
 
-  // 로딩 스피너 상태
-  const [loading, setLoading] = useState(false);
-
-  // 아바타 비디오 URL (있을 때만 렌더) + ref
+  // 아바타 영상
   const [avatarUrl, setAvatarUrl] = useState("");
   const avatarRef = useRef(null);
 
-  // 서버 깨우기(콜드스타트)
+  // 서버 깨우기
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   async function wakeBackend() {
     const controller = new AbortController();
@@ -138,7 +132,6 @@ function App() {
       clearTimeout(timeout);
     }
   }
-
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -155,22 +148,10 @@ function App() {
   }, []);
 
   // 설문 핸들러
-  function changeLevel(v) {
-    setLevel(v);
-    localStorage.setItem(LS.level, v);
-  }
-  function changeResidence(v) {
-    setResidence(v);
-    localStorage.setItem(LS.residence, v);
-  }
-  function changeRole(v) {
-    setRole(v);
-    localStorage.setItem(LS.role, v);
-  }
-  function changeRecentCourse(v) {
-    setRecentCourse(v);
-    localStorage.setItem(LS.recentCourse, v);
-  }
+  const changeLevel = (v) => { setLevel(v); localStorage.setItem(LS.level, v); };
+  const changeResidence = (v) => { setResidence(v); localStorage.setItem(LS.residence, v); };
+  const changeRole = (v) => { setRole(v); localStorage.setItem(LS.role, v); };
+  const changeRecentCourse = (v) => { setRecentCourse(v); localStorage.setItem(LS.recentCourse, v); };
   function toggleTopic(key) {
     setSelectedTopics((prev) => {
       const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
@@ -179,7 +160,23 @@ function App() {
     });
   }
 
-  // 질문 생성 (설문 반영) + 로딩 스피너
+  // ⏯️ 아바타 재생 유틸
+  const playAvatar = () => {
+    const v = avatarRef.current;
+    if (!v) return;
+    try {
+      v.muted = false;      // 사용자 제스처(버튼 클릭 이후)라면 해제 가능
+      v.currentTime = 0;
+      v.play().catch((e) => {
+        // 브라우저 정책으로 막히면 버튼으로 듣게 두자
+        console.warn("Autoplay prevented, use replay button.", e?.message);
+      });
+    } catch (e) {
+      console.warn("Video play error:", e?.message);
+    }
+  };
+
+  // 질문 생성 + 아바타 자동재생
   const fetchQuestionFromGPT = async () => {
     setLoading(true);
     try {
@@ -225,10 +222,11 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
       const message = (data?.answer || "").trim();
       setQuestion(message || "질문을 불러오지 못했습니다.");
 
-      // 질문을 아바타가 읽어주기
       if (message) {
         const url = await speakText(message);
-        if (url) setAvatarUrl(url);
+        if (url) {
+          setAvatarUrl(url); // useEffect에서 자동 재생
+        }
       }
     } catch (error) {
       console.error("질문 생성 오류:", error);
@@ -237,6 +235,17 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
       setLoading(false);
     }
   };
+
+  // 아바타 URL이 생기면 자동 재생 (practice 화면일 때만)
+  useEffect(() => {
+    if (ui !== "practice" || !avatarUrl) return;
+    const v = avatarRef.current;
+    if (!v) return;
+    const handler = () => playAvatar();
+    v.addEventListener("loadeddata", handler, { once: true });
+    return () => v && v.removeEventListener("loadeddata", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [avatarUrl, ui]);
 
   // 타이머
   useEffect(() => {
@@ -280,7 +289,7 @@ Question: ${question}
     }
   };
 
-  // 브라우저→OpenAI 직접 STT (주의: 키가 노출되므로 배포용은 백엔드 사용 권장)
+  // 브라우저→OpenAI 직접 STT
   const transcribeAudio = async (audioBlob) => {
     const formData = new FormData();
     formData.append("file", audioBlob, "recording.webm");
@@ -307,20 +316,18 @@ Question: ${question}
     setMediaRecorder(recorder);
     setIsRecording(true);
   };
-
   const stopRecording = () => {
-    if (mediaRecorder) {
-      mediaRecorder.stop();
-      setIsRecording(false);
-      setIsFinished(true);
-      mediaRecorder.onstop = async () => {
-        const blob = new Blob(mediaRecorder.chunks, { type: "audio/webm" });
-        const url = URL.createObjectURL(blob);
-        setAudioURL(url); // ✅ 녹음 재생용 URL 저장
-        const transcript = await transcribeAudio(blob);
-        setMemo((prev) => prev + "\n" + transcript);
-      };
-    }
+    if (!mediaRecorder) return;
+    mediaRecorder.stop();
+    setIsRecording(false);
+    setIsFinished(true);
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(mediaRecorder.chunks, { type: "audio/webm" });
+      const url = URL.createObjectURL(blob);
+      setAudioURL(url);
+      const transcript = await transcribeAudio(blob);
+      setMemo((prev) => prev + "\n" + transcript);
+    };
   };
 
   // 저장
@@ -338,13 +345,12 @@ Question: ${question}
     alert("저장되었습니다!");
   };
 
-  // 저장 보기
+  // 저장 보기/돌아가기
   const toggleSavedView = () => {
     const history = JSON.parse(localStorage.getItem(LS.history) || "[]");
     setSavedHistory(history);
     setUi("review");
   };
-
   const returnToPractice = async () => {
     await fetchQuestionFromGPT();
     setTimeLeft(60);
@@ -354,7 +360,7 @@ Question: ${question}
     setUi("practice");
   };
 
-  // 스크롤탑 표시
+  // 스크롤탑
   useEffect(() => {
     const onScroll = () => setShowScrollTop(window.scrollY > 200);
     window.addEventListener("scroll", onScroll);
@@ -371,46 +377,20 @@ Question: ${question}
       </div>
     ) : null;
 
-  // 콜드스타트 표시
+  // ===== 화면들 =====
+
   if (!serverReady) {
     return (
       <>
         <div className="start-screen">
           <h1 className="start-title">OPIC</h1>
           <p className="start-subtitle">서버 깨우는 중… (최대 50초)</p>
-
-          {/* 아바타 (선택) */}
-          {avatarUrl && (
-            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-              <video
-                ref={avatarRef}
-                src={avatarUrl}
-                autoPlay
-                muted
-                playsInline
-                className="avatar-video"
-                style={{ maxWidth: 320, borderRadius: 12 }}
-              />
-              <button
-                onClick={() => {
-                  if (avatarRef.current) {
-                    avatarRef.current.muted = false;
-                    avatarRef.current.currentTime = 0;
-                    avatarRef.current.play().catch(() => { });
-                  }
-                }}
-              >
-                ▶ 아바타 음성 재생
-              </button>
-            </div>
-          )}
         </div>
         <LoadingOverlay />
       </>
     );
   }
 
-  // 시작 화면: 클릭 → 설문
   if (ui === "start") {
     return (
       <>
@@ -423,39 +403,12 @@ Question: ${question}
           >
             Let’s start practice
           </p>
-
-          {/* 아바타 (선택) */}
-          {avatarUrl && (
-            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-              <video
-                ref={avatarRef}
-                src={avatarUrl}
-                autoPlay
-                muted
-                playsInline
-                className="avatar-video"
-                style={{ maxWidth: 320, borderRadius: 12 }}
-              />
-              <button
-                onClick={() => {
-                  if (avatarRef.current) {
-                    avatarRef.current.muted = false;
-                    avatarRef.current.currentTime = 0;
-                    avatarRef.current.play().catch(() => { });
-                  }
-                }}
-              >
-                ▶ 아바타 음성 재생
-              </button>
-            </div>
-          )}
         </div>
         <LoadingOverlay />
       </>
     );
   }
 
-  // 설문 페이지
   if (ui === "survey") {
     return (
       <>
@@ -534,9 +487,7 @@ Question: ${question}
                   );
                 })}
               </div>
-              <p className="hint">
-                아무 것도 선택하지 않으면 모든 주제에서 무작위로 출제됩니다.
-              </p>
+              <p className="hint">아무 것도 선택하지 않으면 모든 주제에서 무작위로 출제됩니다.</p>
             </div>
 
             <div className="actions">
@@ -547,7 +498,7 @@ Question: ${question}
                 className="btn primary"
                 disabled={loading}
                 onClick={async () => {
-                  await fetchQuestionFromGPT(); // 로딩 오버레이 on
+                  await fetchQuestionFromGPT();
                   setUi("practice");
                 }}
               >
@@ -555,46 +506,37 @@ Question: ${question}
               </button>
             </div>
           </div>
-
-          {/* 아바타 (선택) */}
-          {avatarUrl && (
-            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-              <video
-                ref={avatarRef}
-                src={avatarUrl}
-                autoPlay
-                muted
-                playsInline
-                className="avatar-video"
-                style={{ maxWidth: 320, borderRadius: 12 }}
-              />
-              <button
-                onClick={() => {
-                  if (avatarRef.current) {
-                    avatarRef.current.muted = false;
-                    avatarRef.current.currentTime = 0;
-                    avatarRef.current.play().catch(() => { });
-                  }
-                }}
-              >
-                ▶ 아바타 음성 재생
-              </button>
-            </div>
-          )}
         </div>
         <LoadingOverlay />
       </>
     );
   }
 
-  // 연습 화면
   if (ui === "practice") {
     return (
       <>
         <div className="App started">
           <h2>오늘의 질문</h2>
           <h3>남은 시간: {timeLeft}초</h3>
-          <p className="question-text">{question || "로딩 중..."}</p>
+
+          {/* 🔊 실제 시험처럼: 텍스트는 숨기고(렌더 X), 아바타가 질문 영역에서 자동 재생 */}
+          {avatarUrl ? (
+            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+              <video
+                ref={avatarRef}
+                src={avatarUrl}
+                autoPlay
+                playsInline
+                className="avatar-video"
+                style={{ maxWidth: 420, borderRadius: 12 }}
+              />
+              <button className="btn primary" onClick={playAvatar}>
+                ▶ 다시 듣기
+              </button>
+            </div>
+          ) : (
+            <p className="question-text">질문 준비 중…</p>
+          )}
 
           {!isRecording ? (
             <button onClick={startRecording}>
@@ -617,7 +559,7 @@ Question: ${question}
             <i className="fas fa-shuffle"></i> {loading ? "새 질문 로딩…" : "다른 질문 받기"}
           </button>
 
-          <div style={{ marginTop: "40px" }}>
+          <div style={{ marginTop: 40 }}>
             <h3>📝 내 답변 메모하기</h3>
             <textarea
               value={memo}
@@ -642,33 +584,7 @@ Question: ${question}
             </>
           )}
 
-          {/* 아바타 */}
-          {avatarUrl && (
-            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-              <video
-                ref={avatarRef}
-                src={avatarUrl}
-                autoPlay
-                muted
-                playsInline
-                className="avatar-video"
-                style={{ maxWidth: 320, borderRadius: 12 }}
-              />
-              <button
-                onClick={() => {
-                  if (avatarRef.current) {
-                    avatarRef.current.muted = false;
-                    avatarRef.current.currentTime = 0;
-                    avatarRef.current.play().catch(() => { });
-                  }
-                }}
-              >
-                ▶ 아바타 음성 재생
-              </button>
-            </div>
-          )}
-
-          {/* 하단 설문 다시하기 버튼 */}
+          {/* 설문 다시하기 */}
           <div className="practice-actions">
             <button
               type="button"
@@ -714,16 +630,12 @@ Question: ${question}
     );
   }
 
-  // 저장 리뷰 화면
   if (ui === "review") {
     return (
       <>
-        <div className={`App started review-mode`}>
+        <div className="App started review-mode">
           <h2>
-            <i
-              className="fas fa-book-journal-whills"
-              style={{ color: "#4e47d1", marginRight: "10px" }}
-            ></i>{" "}
+            <i className="fas fa-book-journal-whills" style={{ color: "#4e47d1", marginRight: 10 }}></i>
             저장된 질문과 답변
           </h2>
 
@@ -737,40 +649,30 @@ Question: ${question}
               className="question-block"
               style={{
                 width: "80%",
-                minHeight: "120px",
+                minHeight: 120,
                 margin: "20px auto",
-                padding: "20px",
+                padding: 20,
                 border: "1px solid #ccc",
-                borderRadius: "10px",
+                borderRadius: 10,
                 backgroundColor: "#f9f9f9",
                 boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
               }}
             >
               <p>
                 <strong>
-                  <i
-                    className="fas fa-question-circle"
-                    style={{ marginRight: "8px", color: "#6c63ff" }}
-                  ></i>
+                  <i className="fas fa-question-circle" style={{ marginRight: 8, color: "#6c63ff" }}></i>
                   Q{index + 1}. {item.question}
                 </strong>
               </p>
 
-              <button
-                onClick={() =>
-                  setOpenAnswerIndex(openAnswerIndex === index ? null : index)
-                }
-              >
-                <i
-                  className={`fas ${openAnswerIndex === index ? "fa-chevron-up" : "fa-comment-dots"
-                    }`}
-                ></i>
+              <button onClick={() => setOpenAnswerIndex(openAnswerIndex === index ? null : index)}>
+                <i className={`fas ${openAnswerIndex === index ? "fa-chevron-up" : "fa-comment-dots"}`}></i>
                 &nbsp;{openAnswerIndex === index ? "답변 숨기기" : "답변 보기"}
               </button>
 
               {openAnswerIndex === index && (
                 <>
-                  <p style={{ marginTop: "8px", whiteSpace: "pre-wrap" }}>
+                  <p style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
                     💬 <em>{item.memo}</em>
                   </p>
                   {item.gptAnswer && (
@@ -798,12 +700,12 @@ Question: ${question}
                 color: "white",
                 border: "none",
                 borderRadius: "50%",
-                width: "50px",
-                height: "50px",
+                width: 50,
+                height: 50,
                 display: "flex",
                 justifyContent: "center",
                 alignItems: "center",
-                fontSize: "22px",
+                fontSize: 22,
                 cursor: "pointer",
                 boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
                 zIndex: 1000,
