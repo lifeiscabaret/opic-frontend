@@ -268,3 +268,1121 @@ textarea {
     font-size: 15px;
   }
 }
+
+/* ===== OPIC Survey 레이아웃 & 토픽 버튼 커스터마이즈 ===== */
+
+/* 전체 설문 영역 가운데 정렬 */
+.survey-wrap {
+  min-height: 100vh;
+  padding: 40px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.survey-card {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  text-align: center;
+  background: transparent;
+  /* 배경 유지 */
+}
+
+/* 타이틀 간격 */
+.survey-title {
+  margin: 0 0 16px 0;
+}
+
+/* 셀렉트 4칸 그리드 + 가운데 정렬 */
+.survey-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px 16px;
+  align-items: center;
+  justify-items: center;
+  margin: 10px auto 24px;
+}
+
+/* label + select 묶음 정돈 */
+.field {
+  width: 100%;
+  max-width: 320px;
+  text-align: left;
+}
+
+.field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.field select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #cfd5ff;
+  background: #fff;
+  color: #0d1b44;
+}
+
+/* 토픽 영역 */
+.topics-head {
+  font-weight: 700;
+  margin: 18px 0 10px;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  /* ← 가운데 정렬 */
+  margin-bottom: 8px;
+}
+
+/* 토픽 버튼: 기본 흰색, 파란 글씨 */
+.chip {
+  /* 기본 button 공통 스타일 덮어쓰기 */
+  background: #ffffff !important;
+  color: #2563eb !important;
+  /* 파란 글씨 */
+  border: 1px solid #93c5fd;
+  box-shadow: none !important;
+  padding: 12px 16px !important;
+  border-radius: 12px !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.2px;
+  transition: all 0.2s ease;
+}
+
+/* hover: 파란 배경 + 흰 글씨 */
+.chip:hover {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  transform: translateY(-2px);
+}
+
+/* 선택(active): 파란 배경 + 흰 글씨 (App.js에서 active 클래스 이미 적용됨) */
+.chip.active {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  border-color: #2563eb;
+}
+
+/* 하단 안내 문구: 흰색으로 */
+.hint {
+  color: #ffffff;
+  /* 기존 회색 → 흰색 */
+  opacity: 0.95;
+  margin-top: 6px;
+}
+
+/* 버튼 영역 가운데 정렬 */
+.actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+/* 하단 버튼 hover 시 스타일 변경 */
+.actions .btn:hover {
+  background: #ffffff !important;
+  /* 배경 흰색 */
+  color: #2563eb !important;
+  /* 글씨 파란색 */
+  border: 2px solid #2563eb !important;
+  /* 테두리 파란색 */
+  transform: translateY(-4px) scale(1.03);
+}
+
+/* 안내 문구 굵게 */
+.hint {
+  color: #ffffff;
+  font-weight: 700;
+  /* Bold */
+  opacity: 0.95;
+}
+
+/* === practice 하단 버튼 영역 === */
+.practice-actions {
+  margin: 28px 0 10px;
+  display: flex;
+  justify-content: center;
+}
+
+/* 설문 재설정 버튼 스타일 */
+.btn-reset {
+  background: #ffffff;
+  /* 기본 흰색 */
+  color: #2563eb;
+  /* 파란 글씨 */
+  border: 2px solid #2563eb;
+  /* 파란 테두리 */
+  border-radius: 12px;
+  padding: 12px 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.18);
+}
+
+/* hover 시 살짝 띄우고 진한 파란 느낌 */
+.btn-reset:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 26px rgba(37, 99, 235, 0.28);
+}
+
+/* 화살표 살짝 '툭툭' 치는 애니메이션 */
+.icon-nudge {
+  display: inline-block;
+  margin-right: 8px;
+  animation: nudge-left-right 1.2s ease-in-out infinite;
+}
+
+@keyframes nudge-left-right {
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  50% {
+    transform: translateX(-4px);
+  }
+}
+
+/* 배경 & 기본 글꼴 */
+body {
+  margin: 0;
+  background-color: #0d1b44;
+  font-family: 'Poppins', 'Noto Sans KR', sans-serif;
+  color: #fff;
+  overflow: auto;
+  /* 수정: hidden → auto */
+}
+
+/* 시작 화면 스타일 */
+.start-screen {
+  height: 100vh;
+  background-color: #0a1931;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.start-title {
+  font-size: clamp(100px, 20vw, 300px);
+  font-weight: bold;
+  background: linear-gradient(to bottom, #ffffff, #aaaaaa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 2px 2px 10px rgba(255, 255, 255, 0.5);
+  animation: rotate 10s linear infinite;
+}
+
+@keyframes rotate {
+  0% {
+    transform: rotateY(0deg) rotateX(0deg);
+  }
+
+  100% {
+    transform: rotateY(360deg) rotateX(360deg);
+  }
+}
+
+.start-subtitle {
+  font-size: 28px;
+  font-weight: 600;
+  color: #ccc;
+  letter-spacing: 2px;
+  opacity: 0;
+  animation: fadeInText 2s ease-in-out forwards;
+  animation-delay: 1s;
+  cursor: pointer;
+  transition: color 0.3s;
+}
+
+@keyframes fadeInText {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.start-subtitle:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
+/* 앱 본문 컨테이너 */
+.App,
+.App.started {
+  max-height: none;
+  /* 제한 없애기 */
+  overflow-y: visible;
+  /* 내용이 넘쳐도 보이게 */
+  padding-bottom: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 공통 버튼 스타일 */
+button {
+  padding: 14px 28px;
+  font-size: 16px;
+  margin: 12px 8px 0;
+  cursor: pointer;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(to right, #3b82f6, #60a5fa);
+  color: white;
+  font-weight: 600;
+  box-shadow: 0 6px 18px rgba(108, 99, 255, 0.3);
+  transition: all 0.3s ease;
+  backdrop-filter: blur(4px);
+  letter-spacing: 0.5px;
+}
+
+button:hover {
+  transform: translateY(-4px) scale(1.03);
+  background: linear-gradient(to right, #2563eb, #3b82f6);
+  box-shadow: 0 10px 30px rgba(108, 99, 255, 0.5);
+}
+
+/* 질문 텍스트 */
+h2 {
+  margin-top: 20px;
+  font-size: 28px;
+}
+
+h3 {
+  margin-top: 10px;
+  font-size: 20px;
+}
+
+/* 텍스트 입력 영역 */
+textarea {
+  padding: 12px;
+  font-size: 16px;
+  border-radius: 10px;
+  border: 1px solid #ccc;
+  width: 100%;
+  max-width: 600px;
+  resize: none;
+  margin-top: 12px;
+  background-color: #fff;
+  color: #222;
+}
+
+/* 질문/답변 박스 */
+.question-block {
+  width: 100%;
+  max-width: 800px;
+  background-color: #ffffff;
+  padding: 20px;
+  border-radius: 12px;
+  margin: 16px auto;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  text-align: left;
+  overflow: hidden;
+  color: #222;
+}
+
+.question-block p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* 모범답안 박스 */
+.gpt-answer-box {
+  background-color: #e9f0ff;
+  border-left: 4px solid #3b82f6;
+  color: #333;
+  font-style: italic;
+  padding: 16px;
+  border-radius: 8px;
+  margin-top: 12px;
+  white-space: pre-wrap;
+}
+
+.question-text {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.6;
+  text-align: center;
+  color: #ffffff;
+  margin: 40px 0 20px 0;
+  /* 위아래 여백 */
+  padding: 0 20px;
+  /* 양 옆 여백 (모바일 대응) */
+  max-width: 900px;
+  animation: fadeInText 1.2s ease-in-out;
+  text-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* 저장된 항목 */
+.saved-item {
+  color: #222;
+  background-color: #f9f9f9;
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+}
+
+/* 반응형 정리 */
+@media screen and (max-width: 768px) {
+  .App {
+    padding: 20px 10px 80px;
+  }
+
+  button {
+    width: 100%;
+    max-width: 90%;
+  }
+
+  textarea {
+    max-width: 100%;
+  }
+
+  .question-block {
+    padding: 16px;
+  }
+}
+
+.review-mode {
+  background-color: #f4f4f6;
+  min-height: 100vh;
+  padding-top: 40px;
+  padding-bottom: 80px;
+}
+
+.review-mode h2 {
+  color: #222;
+}
+
+@media screen and (max-width: 480px) {
+  body {
+    font-size: 15px;
+  }
+
+  h2 {
+    font-size: 20px;
+  }
+
+  h3 {
+    font-size: 16px;
+  }
+
+  .start-title {
+    font-size: clamp(60px, 16vw, 100px);
+  }
+
+  .question-text {
+    font-size: 22px;
+    padding: 0 12px;
+  }
+
+  .start-subtitle {
+    font-size: 18px;
+    text-align: center;
+    padding: 0 10px;
+  }
+
+  .App,
+  .App.started {
+    padding: 20px 10px;
+  }
+
+  button {
+    padding: 12px 18px;
+    font-size: 15px;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  textarea {
+    font-size: 14px;
+    padding: 10px;
+  }
+
+  .question-block {
+    margin: 12px 8px;
+    padding: 14px;
+  }
+
+  .gpt-answer-box {
+    font-size: 15px;
+  }
+}
+
+/* ===== OPIC Survey 레이아웃 & 토픽 버튼 커스터마이즈 ===== */
+
+/* 전체 설문 영역 가운데 정렬 */
+.survey-wrap {
+  min-height: 100vh;
+  padding: 40px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.survey-card {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  text-align: center;
+  background: transparent;
+  /* 배경 유지 */
+}
+
+/* 타이틀 간격 */
+.survey-title {
+  margin: 0 0 16px 0;
+}
+
+/* 셀렉트 4칸 그리드 + 가운데 정렬 */
+.survey-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px 16px;
+  align-items: center;
+  justify-items: center;
+  margin: 10px auto 24px;
+}
+
+/* label + select 묶음 정돈 */
+.field {
+  width: 100%;
+  max-width: 320px;
+  text-align: left;
+}
+
+.field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.field select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #cfd5ff;
+  background: #fff;
+  color: #0d1b44;
+}
+
+/* 토픽 영역 */
+.topics-head {
+  font-weight: 700;
+  margin: 18px 0 10px;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  /* ← 가운데 정렬 */
+  margin-bottom: 8px;
+}
+
+/* 토픽 버튼: 기본 흰색, 파란 글씨 */
+.chip {
+  /* 기본 button 공통 스타일 덮어쓰기 */
+  background: #ffffff !important;
+  color: #2563eb !important;
+  /* 파란 글씨 */
+  border: 1px solid #93c5fd;
+  box-shadow: none !important;
+  padding: 12px 16px !important;
+  border-radius: 12px !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.2px;
+  transition: all 0.2s ease;
+}
+
+/* hover: 파란 배경 + 흰 글씨 */
+.chip:hover {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  transform: translateY(-2px);
+}
+
+/* 선택(active): 파란 배경 + 흰 글씨 (App.js에서 active 클래스 이미 적용됨) */
+.chip.active {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  border-color: #2563eb;
+}
+
+/* 하단 안내 문구: 흰색으로 */
+.hint {
+  color: #ffffff;
+  /* 기존 회색 → 흰색 */
+  opacity: 0.95;
+  margin-top: 6px;
+}
+
+/* 버튼 영역 가운데 정렬 */
+.actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+/* 하단 버튼 hover 시 스타일 변경 */
+.actions .btn:hover {
+  background: #ffffff !important;
+  /* 배경 흰색 */
+  color: #2563eb !important;
+  /* 글씨 파란색 */
+  border: 2px solid #2563eb !important;
+  /* 테두리 파란색 */
+  transform: translateY(-4px) scale(1.03);
+}
+
+/* 안내 문구 굵게 */
+.hint {
+  color: #ffffff;
+  font-weight: 700;
+  /* Bold */
+  opacity: 0.95;
+}
+
+/* === practice 하단 버튼 영역 === */
+.practice-actions {
+  margin: 28px 0 10px;
+  display: flex;
+  justify-content: center;
+}
+
+/* 설문 재설정 버튼 스타일 */
+.btn-reset {
+  background: #ffffff;
+  /* 기본 흰색 */
+  color: #2563eb;
+  /* 파란 글씨 */
+  border: 2px solid #2563eb;
+  /* 파란 테두리 */
+  border-radius: 12px;
+  padding: 12px 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.18);
+}
+
+/* hover 시 살짝 띄우고 진한 파란 느낌 */
+.btn-reset:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 26px rgba(37, 99, 235, 0.28);
+}
+
+/* 화살표 살짝 '툭툭' 치는 애니메이션 */
+.icon-nudge {
+  display: inline-block;
+  margin-right: 8px;
+  animation: nudge-left-right 1.2s ease-in-out infinite;
+}
+
+@keyframes nudge-left-right {
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  50% {
+    transform: translateX(-4px);
+  }
+}
+
+/* 배경 & 기본 글꼴 */
+body {
+  margin: 0;
+  background-color: #0d1b44;
+  font-family: 'Poppins', 'Noto Sans KR', sans-serif;
+  color: #fff;
+  overflow: auto;
+  /* 수정: hidden → auto */
+}
+
+/* 시작 화면 스타일 */
+.start-screen {
+  height: 100vh;
+  background-color: #0a1931;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.start-title {
+  font-size: clamp(100px, 20vw, 300px);
+  font-weight: bold;
+  background: linear-gradient(to bottom, #ffffff, #aaaaaa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 2px 2px 10px rgba(255, 255, 255, 0.5);
+  animation: rotate 10s linear infinite;
+}
+
+@keyframes rotate {
+  0% {
+    transform: rotateY(0deg) rotateX(0deg);
+  }
+
+  100% {
+    transform: rotateY(360deg) rotateX(360deg);
+  }
+}
+
+.start-subtitle {
+  font-size: 28px;
+  font-weight: 600;
+  color: #ccc;
+  letter-spacing: 2px;
+  opacity: 0;
+  animation: fadeInText 2s ease-in-out forwards;
+  animation-delay: 1s;
+  cursor: pointer;
+  transition: color 0.3s;
+}
+
+@keyframes fadeInText {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.start-subtitle:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
+/* 앱 본문 컨테이너 */
+.App,
+.App.started {
+  max-height: none;
+  /* 제한 없애기 */
+  overflow-y: visible;
+  /* 내용이 넘쳐도 보이게 */
+  padding-bottom: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 공통 버튼 스타일 */
+button {
+  padding: 14px 28px;
+  font-size: 16px;
+  margin: 12px 8px 0;
+  cursor: pointer;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(to right, #3b82f6, #60a5fa);
+  color: white;
+  font-weight: 600;
+  box-shadow: 0 6px 18px rgba(108, 99, 255, 0.3);
+  transition: all 0.3s ease;
+  backdrop-filter: blur(4px);
+  letter-spacing: 0.5px;
+}
+
+button:hover {
+  transform: translateY(-4px) scale(1.03);
+  background: linear-gradient(to right, #2563eb, #3b82f6);
+  box-shadow: 0 10px 30px rgba(108, 99, 255, 0.5);
+}
+
+/* 질문 텍스트 */
+h2 {
+  margin-top: 20px;
+  font-size: 28px;
+}
+
+h3 {
+  margin-top: 10px;
+  font-size: 20px;
+}
+
+/* 텍스트 입력 영역 */
+textarea {
+  padding: 12px;
+  font-size: 16px;
+  border-radius: 10px;
+  border: 1px solid #ccc;
+  width: 100%;
+  max-width: 600px;
+  resize: none;
+  margin-top: 12px;
+  background-color: #fff;
+  color: #222;
+}
+
+/* 질문/답변 박스 */
+.question-block {
+  width: 100%;
+  max-width: 800px;
+  background-color: #ffffff;
+  padding: 20px;
+  border-radius: 12px;
+  margin: 16px auto;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  text-align: left;
+  overflow: hidden;
+  color: #222;
+}
+
+.question-block p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* 모범답안 박스 */
+.gpt-answer-box {
+  background-color: #e9f0ff;
+  border-left: 4px solid #3b82f6;
+  color: #333;
+  font-style: italic;
+  padding: 16px;
+  border-radius: 8px;
+  margin-top: 12px;
+  white-space: pre-wrap;
+}
+
+.question-text {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.6;
+  text-align: center;
+  color: #ffffff;
+  margin: 40px 0 20px 0;
+  /* 위아래 여백 */
+  padding: 0 20px;
+  /* 양 옆 여백 (모바일 대응) */
+  max-width: 900px;
+  animation: fadeInText 1.2s ease-in-out;
+  text-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* 저장된 항목 */
+.saved-item {
+  color: #222;
+  background-color: #f9f9f9;
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+}
+
+/* 반응형 정리 */
+@media screen and (max-width: 768px) {
+  .App {
+    padding: 20px 10px 80px;
+  }
+
+  button {
+    width: 100%;
+    max-width: 90%;
+  }
+
+  textarea {
+    max-width: 100%;
+  }
+
+  .question-block {
+    padding: 16px;
+  }
+}
+
+.review-mode {
+  background-color: #f4f4f6;
+  min-height: 100vh;
+  padding-top: 40px;
+  padding-bottom: 80px;
+}
+
+.review-mode h2 {
+  color: #222;
+}
+
+@media screen and (max-width: 480px) {
+  body {
+    font-size: 15px;
+  }
+
+  h2 {
+    font-size: 20px;
+  }
+
+  h3 {
+    font-size: 16px;
+  }
+
+  .start-title {
+    font-size: clamp(60px, 16vw, 100px);
+  }
+
+  .question-text {
+    font-size: 22px;
+    padding: 0 12px;
+  }
+
+  .start-subtitle {
+    font-size: 18px;
+    text-align: center;
+    padding: 0 10px;
+  }
+
+  .App,
+  .App.started {
+    padding: 20px 10px;
+  }
+
+  button {
+    padding: 12px 18px;
+    font-size: 15px;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  textarea {
+    font-size: 14px;
+    padding: 10px;
+  }
+
+  .question-block {
+    margin: 12px 8px;
+    padding: 14px;
+  }
+
+  .gpt-answer-box {
+    font-size: 15px;
+  }
+}
+
+/* ===== OPIC Survey 레이아웃 & 토픽 버튼 커스터마이즈 ===== */
+
+/* 전체 설문 영역 가운데 정렬 */
+.survey-wrap {
+  min-height: 100vh;
+  padding: 40px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.survey-card {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  text-align: center;
+  background: transparent;
+  /* 배경 유지 */
+}
+
+/* 타이틀 간격 */
+.survey-title {
+  margin: 0 0 16px 0;
+}
+
+/* 셀렉트 4칸 그리드 + 가운데 정렬 */
+.survey-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px 16px;
+  align-items: center;
+  justify-items: center;
+  margin: 10px auto 24px;
+}
+
+/* label + select 묶음 정돈 */
+.field {
+  width: 100%;
+  max-width: 320px;
+  text-align: left;
+}
+
+.field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.field select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #cfd5ff;
+  background: #fff;
+  color: #0d1b44;
+}
+
+/* 토픽 영역 */
+.topics-head {
+  font-weight: 700;
+  margin: 18px 0 10px;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  /* ← 가운데 정렬 */
+  margin-bottom: 8px;
+}
+
+/* 토픽 버튼: 기본 흰색, 파란 글씨 */
+.chip {
+  /* 기본 button 공통 스타일 덮어쓰기 */
+  background: #ffffff !important;
+  color: #2563eb !important;
+  /* 파란 글씨 */
+  border: 1px solid #93c5fd;
+  box-shadow: none !important;
+  padding: 12px 16px !important;
+  border-radius: 12px !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.2px;
+  transition: all 0.2s ease;
+}
+
+/* hover: 파란 배경 + 흰 글씨 */
+.chip:hover {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  transform: translateY(-2px);
+}
+
+/* 선택(active): 파란 배경 + 흰 글씨 (App.js에서 active 클래스 이미 적용됨) */
+.chip.active {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  border-color: #2563eb;
+}
+
+/* 하단 안내 문구: 흰색으로 */
+.hint {
+  color: #ffffff;
+  /* 기존 회색 → 흰색 */
+  opacity: 0.95;
+  margin-top: 6px;
+}
+
+/* 버튼 영역 가운데 정렬 */
+.actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+/* 하단 버튼 hover 시 스타일 변경 */
+.actions .btn:hover {
+  background: #ffffff !important;
+  /* 배경 흰색 */
+  color: #2563eb !important;
+  /* 글씨 파란색 */
+  border: 2px solid #2563eb !important;
+  /* 테두리 파란색 */
+  transform: translateY(-4px) scale(1.03);
+}
+
+/* 안내 문구 굵게 */
+.hint {
+  color: #ffffff;
+  font-weight: 700;
+  /* Bold */
+  opacity: 0.95;
+}
+
+/* === practice 하단 버튼 영역 (최종) === */
+.practice-actions {
+  margin: 28px 0 10px;
+  display: flex;
+  justify-content: center;
+}
+
+/* 설문 재설정 버튼 - 기본/hover/active/포커스 모든 상태 확실히 오버라이드 */
+button.btn-reset {
+  background: #ffffff !important;
+  /* 기본 흰 배경 */
+  color: #2563eb !important;
+  /* 기본 파란 글씨 */
+  border: 2px solid #2563eb !important;
+  /* 파란 테두리 */
+  border-radius: 12px;
+  padding: 12px 18px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.18);
+  transition: all 0.25s ease;
+}
+
+/* hover: 흰 배경 유지 + 살짝 띄우기 */
+button.btn-reset:hover {
+  background: #ffffff !important;
+  color: #2563eb !important;
+  border-color: #2563eb !important;
+  transform: translateY(-3px);
+  box-shadow: 0 10px 26px rgba(37, 99, 235, 0.28);
+}
+
+/* active/focus: 파란 배경 + 흰 글씨로 반전 (겹침 문제 해결) */
+button.btn-reset:active,
+button.btn-reset:focus {
+  background: #2563eb !important;
+  /* 진한 파랑 */
+  color: #ffffff !important;
+  /* 흰 글씨 */
+  border-color: #2563eb !important;
+  outline: none !important;
+}
+
+/* 모바일에서 버튼 폭 자동 확장 */
+@media (max-width: 480px) {
+  .btn-reset {
+    width: 90%;
+  }
+}
+
+/* 화살표 살짝 '툭툭' 치는 애니메이션 */
+.icon-nudge {
+  display: inline-block;
+  margin-right: 8px;
+  animation: nudge-left-right 1.2s ease-in-out infinite;
+}
+
+@keyframes nudge-left-right {
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  50% {
+    transform: translateX(-4px);
+  }
+}
