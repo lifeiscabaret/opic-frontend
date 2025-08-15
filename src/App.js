@@ -8,10 +8,14 @@ const API_BASE =
   process.env.REACT_APP_API_BASE_URL || "https://opic-backend.onrender.com";
 
 const IMAGE_URL =
-  process.env.REACT_APP_AVATAR_IMAGE_URL ||
-  `${window.location.origin}/avatar.png`;
+  process.env.REACT_APP_AVATAR_IMAGE_URL || `${window.location.origin}/avatar.png`;
 
-/* ====================== 로컬스토리지 키 ====================== */
+// iOS 탐지: iPhone/iPad/iPod 또는 트랙패드 터치가 있는 iPadOS Safari (MacIntel + touch)
+const IS_IOS =
+  /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+/* =================== 로컬스토리지 키 =================== */
 const LS = {
   level: "opic:level",
   role: "opic:role",
@@ -56,96 +60,25 @@ const SURVEY = {
   ],
 };
 
-/* ====================== 브라우저 TTS (개선판) ====================== */
-// 보이스 로딩 보장
-function waitVoicesReady(timeout = 2000) {
-  return new Promise((resolve) => {
-    const v = window.speechSynthesis.getVoices();
-    if (v && v.length) return resolve(v);
-    const t = setTimeout(() => resolve(window.speechSynthesis.getVoices()), timeout);
-    window.speechSynthesis.onvoiceschanged = () => {
-      clearTimeout(t);
-      resolve(window.speechSynthesis.getVoices());
-    };
-  });
-}
-const VOICE_PRIORITY = {
-  ios: ["Samantha", "Ava", "Ava (Enhanced)", "Victoria", "Allison", "Nora"],
-  mac: ["Samantha", "Ava", "Ava (Enhanced)", "Victoria", "Allison", "Nora", "Alex"],
-  chrome: ["Google US English Female", "Google US English", "Microsoft Aria Online (Natural) - English (United States)"],
-  generic: ["Jenny", "Salli", "Joanna", "Linda", "Amy", "Emma", "Olivia"],
-};
-function isIOS() {
-  const ua = navigator.userAgent || "";
-  return /iPhone|iPad|iPod/i.test(ua);
-}
-function isMac() {
-  return navigator.platform === "MacIntel" || /Mac OS X/.test(navigator.userAgent);
-}
-async function pickPreferredVoice() {
-  const voices = await waitVoicesReady();
-  const byName = (names) =>
-    voices.find((v) => names.some((n) => v.name === n)) ||
-    voices.find((v) => names.some((n) => v.name.includes(n)));
-  return (
-    (isIOS() && byName(VOICE_PRIORITY.ios)) ||
-    (isMac() && byName(VOICE_PRIORITY.mac)) ||
-    byName(VOICE_PRIORITY.chrome) ||
-    byName(VOICE_PRIORITY.generic) ||
-    voices.find((v) => /en-?US/i.test(v.lang)) ||
-    voices[0]
-  );
-}
-function chunkText(text, maxLen = 140) {
-  const sentences = text
-    .replace(/\s+/g, " ")
-    .split(/([.?!;:])\s+/)
-    .reduce((acc, cur, i, arr) => {
-      if (/[.?!;:]/.test(cur) && arr[i + 1] !== undefined) {
-        acc.push((arr[i - 1] || "") + cur);
-      }
-      return acc;
-    }, [])
-    .filter(Boolean);
-  const chunks = [];
-  for (const s of (sentences.length ? sentences : [text])) {
-    if (s.length <= maxLen) chunks.push(s);
-    else {
-      let i = 0;
-      while (i < s.length) {
-        chunks.push(s.slice(i, i + maxLen));
-        i += maxLen;
-      }
-    }
-  }
-  return chunks;
-}
-async function speakTTS(text) {
+/* =============== 브라우저 TTS(폴백용) =============== */
+function playTTS(text) {
   try {
-    if (!text) return;
     window.speechSynthesis.cancel();
-    const voice = await pickPreferredVoice();
-    const chunks = chunkText(text);
-    let idx = 0;
-    const readNext = () => {
-      if (idx >= chunks.length) return;
-      const u = new SpeechSynthesisUtterance(chunks[idx++]);
-      u.voice = voice;
-      u.lang = voice?.lang || "en-US";
-      u.rate = isIOS() ? 0.92 : 0.98;
-      u.pitch = 1.04;
-      u.volume = 1.0;
-      u.onend = () => readNext();
-      u.onerror = () => readNext();
-      window.speechSynthesis.speak(u);
-    };
-    readNext();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "en-US";
+    const voices = window.speechSynthesis.getVoices();
+    const preferred =
+      voices.find(
+        (v) => /en-?US/i.test(v.lang) && /female|Jenny|Google US English/i.test(v.name)
+      ) || voices.find((v) => /en-?US/i.test(v.lang)) || voices[0];
+    if (preferred) u.voice = preferred;
+    window.speechSynthesis.speak(u);
   } catch (e) {
-    console.warn("TTS speak failed:", e);
+    console.warn("TTS unavailable:", e?.message);
   }
 }
 
-/* ====================== 서버 TTS (고음질 MP3) ====================== */
+/* =============== 서버 TTS 호출(고음질 MP3) =============== */
 async function fetchQuestionAudio(question) {
   try {
     const cacheKey = "opic:ttsCache";
@@ -172,14 +105,13 @@ async function fetchQuestionAudio(question) {
   }
 }
 
-/* ====================== 메인 컴포넌트 ====================== */
 function App() {
-  // UI/공통
+  /* =============== UI/공통 =============== */
   const [ui, setUi] = useState("start"); // start | survey | practice | review
   const [serverReady, setServerReady] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // 설문
+  /* =============== 설문 상태 =============== */
   const [level, setLevel] = useState(localStorage.getItem(LS.level) || "IH–AL");
   const [residence, setResidence] = useState(localStorage.getItem(LS.residence) || "");
   const [role, setRole] = useState(localStorage.getItem(LS.role) || "");
@@ -188,11 +120,11 @@ function App() {
     JSON.parse(localStorage.getItem(LS.topics) || "[]")
   );
 
-  // 연습
+  /* =============== 연습 상태 =============== */
   const [question, setQuestion] = useState("");
   const [timeLeft, setTimeLeft] = useState(60);
   const [timerRunning, setTimerRunning] = useState(false);
-  const [hasStartedAudio, setHasStartedAudio] = useState(false);
+  const [hasStartedAudio, setHasStartedAudio] = useState(false); // 첫 재생 시점에만 타이머 스타트
 
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -203,12 +135,12 @@ function App() {
   const [openAnswerIndex, setOpenAnswerIndex] = useState(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
-  // 질문 오디오/이미지
+  /* =============== 질문 오디오/아바타(이미지) =============== */
   const [qAudioUrl, setQAudioUrl] = useState("");
   const [useTTS, setUseTTS] = useState(false);
   const qAudioRef = useRef(null);
 
-  /* 서버 깨우기 */
+  /* =============== 서버 깨우기 =============== */
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   async function wakeBackend() {
     const controller = new AbortController();
@@ -238,11 +170,23 @@ function App() {
     };
   }, []);
 
-  /* 설문 핸들러 */
-  const changeLevel = (v) => { setLevel(v); localStorage.setItem(LS.level, v); };
-  const changeResidence = (v) => { setResidence(v); localStorage.setItem(LS.residence, v); };
-  const changeRole = (v) => { setRole(v); localStorage.setItem(LS.role, v); };
-  const changeRecentCourse = (v) => { setRecentCourse(v); localStorage.setItem(LS.recentCourse, v); };
+  /* =============== 설문 핸들러 =============== */
+  const changeLevel = (v) => {
+    setLevel(v);
+    localStorage.setItem(LS.level, v);
+  };
+  const changeResidence = (v) => {
+    setResidence(v);
+    localStorage.setItem(LS.residence, v);
+  };
+  const changeRole = (v) => {
+    setRole(v);
+    localStorage.setItem(LS.role, v);
+  };
+  const changeRecentCourse = (v) => {
+    setRecentCourse(v);
+    localStorage.setItem(LS.recentCourse, v);
+  };
   function toggleTopic(key) {
     setSelectedTopics((prev) => {
       const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
@@ -251,7 +195,7 @@ function App() {
     });
   }
 
-  /* 타이머 */
+  /* =============== 타이머 =============== */
   useEffect(() => {
     if (ui !== "practice" || !timerRunning) return;
     if (timeLeft <= 0) {
@@ -263,11 +207,20 @@ function App() {
     return () => clearInterval(id);
   }, [ui, timerRunning, timeLeft]);
 
-  /* 질문 생성 + 서버 TTS 우선 */
+  /* =============== 질문 생성 + 오디오 준비 =============== */
   const fetchQuestionFromGPT = async () => {
+    // 재생 중이던 것들 정리
+    try {
+      window.speechSynthesis.cancel();
+      if (qAudioRef.current) {
+        qAudioRef.current.pause();
+        qAudioRef.current.currentTime = 0;
+      }
+    } catch { }
+
     setLoading(true);
     try {
-      // 초기화 (타이머는 오디오 재생 시 onPlay에서 시작)
+      // 초기화 (타이머는 실제 오디오 재생 onPlay에서 시작)
       setTimeLeft(60);
       setTimerRunning(false);
       setHasStartedAudio(false);
@@ -277,6 +230,7 @@ function App() {
       setQAudioUrl("");
       setUseTTS(false);
 
+      // 설문 기반 프롬프트
       const chosenLabels = SURVEY.topics
         .filter((t) => selectedTopics.includes(t.key))
         .map((t) => t.label);
@@ -289,7 +243,9 @@ function App() {
         residence && `Residence: ${residence}`,
         role && `Role: ${role}`,
         recentCourse && `Recent course: ${recentCourse}`,
-      ].filter(Boolean).join(" | ");
+      ]
+        .filter(Boolean)
+        .join(" | ");
 
       const prompt = `
 You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in English.
@@ -299,18 +255,20 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
 - One concise question only (18–30 words). No Q1/Q2 numbering, no extra explanations.
 `.trim();
 
+      // 질문 생성
       const res = await fetch(`${API_BASE}/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: prompt }),
       });
       const data = await res.json();
-      const message = (data?.answer || "").trim();
-      setQuestion(message || "질문을 불러오지 못했습니다.");
+      const msg = (data?.answer || "").trim();
+      setQuestion(msg || "질문을 불러오지 못했습니다.");
 
-      if (!message) {
+      if (!msg) {
         setUseTTS(true);
-        await speakTTS("Sorry, I couldn't load the question.");
+        playTTS("Sorry, I couldn't load the question.");
+        // 첫 폴백 재생으로 간주 → 타이머 시작
         if (!hasStartedAudio) {
           setHasStartedAudio(true);
           setTimeLeft(60);
@@ -319,28 +277,35 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
         return;
       }
 
-      // 서버 TTS (캐시 포함)
-      const audioUrl = await fetchQuestionAudio(message);
-      if (audioUrl) {
-        setQAudioUrl(audioUrl);
-        setTimeout(() => {
-          try { qAudioRef.current?.play().catch(() => { }); } catch { }
-        }, 0);
-      } else {
-        // 실패 → 브라우저 TTS
-        setUseTTS(true);
-        await speakTTS(message);
-        if (!hasStartedAudio) {
-          setHasStartedAudio(true);
-          setTimeLeft(60);
-          setTimerRunning(true);
+      // iOS: 항상 서버 MP3 우선(품질/일관성)
+      // 그 외: 서버 MP3 시도 → 실패 시 브라우저 TTS
+      const needServerAudio = IS_IOS || true; // 데스크탑/안드도 우선 시도
+      if (needServerAudio) {
+        const audioUrl = await fetchQuestionAudio(msg);
+        if (audioUrl) {
+          setQAudioUrl(audioUrl);
+          // 사용자 제스처 직후면 자동재생
+          setTimeout(() => {
+            try {
+              qAudioRef.current?.play().catch(() => { });
+            } catch { }
+          }, 0);
+        } else {
+          // 서버 TTS가 실패: iOS는 어쩔 수 없이 TTS(품질 저하 경고), 그 외는 폴백
+          setUseTTS(true);
+          playTTS(msg);
+          if (!hasStartedAudio) {
+            setHasStartedAudio(true);
+            setTimeLeft(60);
+            setTimerRunning(true);
+          }
         }
       }
     } catch (e) {
       console.error("질문 생성 오류:", e);
       setQuestion("질문을 불러오는 중 오류가 발생했습니다.");
       setUseTTS(true);
-      await speakTTS("Sorry, something went wrong.");
+      playTTS("Sorry, something went wrong.");
       if (!hasStartedAudio) {
         setHasStartedAudio(true);
         setTimeLeft(60);
@@ -351,7 +316,7 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
     }
   };
 
-  /* 녹음 */
+  /* =============== 녹음 =============== */
   const startRecording = async () => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const recorder = new MediaRecorder(stream);
@@ -388,7 +353,7 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
     };
   };
 
-  /* 저장 */
+  /* =============== 저장 =============== */
   const handleSave = () => {
     if (!memo.trim()) return alert("📝 답변을 먼저 입력해주세요!");
     const saved = JSON.parse(localStorage.getItem(LS.history) || "[]");
@@ -403,7 +368,7 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
     alert("저장되었습니다!");
   };
 
-  /* 저장 보기/복귀 */
+  /* =============== 저장 보기/복귀 =============== */
   const toggleSavedView = () => {
     const history = JSON.parse(localStorage.getItem(LS.history) || "[]");
     setSavedHistory(history);
@@ -415,7 +380,7 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
     setUi("practice");
   };
 
-  /* 스크롤탑 */
+  /* =============== 스크롤탑 =============== */
   useEffect(() => {
     const onScroll = () => setShowScrollTop(window.scrollY > 200);
     window.addEventListener("scroll", onScroll);
@@ -423,7 +388,7 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
   }, []);
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
-  /* 로딩 오버레이 */
+  /* =============== 로딩 오버레이 =============== */
   const LoadingOverlay = () =>
     loading ? (
       <div className="loading-overlay">
@@ -432,7 +397,8 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
       </div>
     ) : null;
 
-  /* ====================== 화면 렌더 ====================== */
+  /* =============== 화면 렌더 =============== */
+
   if (!serverReady) {
     return (
       <>
@@ -478,7 +444,9 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
                 <label>레벨</label>
                 <select value={level} onChange={(e) => changeLevel(e.target.value)}>
                   {["IM2–IH", "IL–IM1", "IH–AL"].map((l) => (
-                    <option key={l} value={l}>{l}</option>
+                    <option key={l} value={l}>
+                      {l}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -488,7 +456,9 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
                 <select value={residence} onChange={(e) => changeResidence(e.target.value)}>
                   <option value="">(선택)</option>
                   {SURVEY.residenceOptions.map((x) => (
-                    <option key={x} value={x}>{x}</option>
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -498,7 +468,9 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
                 <select value={role} onChange={(e) => changeRole(e.target.value)}>
                   <option value="">(선택)</option>
                   {SURVEY.roles.map((x) => (
-                    <option key={x} value={x}>{x}</option>
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -508,7 +480,9 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
                 <select value={recentCourse} onChange={(e) => changeRecentCourse(e.target.value)}>
                   <option value="">(선택)</option>
                   {SURVEY.recentCourseOptions.map((x) => (
-                    <option key={x} value={x}>{x}</option>
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -534,7 +508,9 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
             </div>
 
             <div className="actions">
-              <button className="btn ghost" onClick={() => setUi("start")}>뒤로</button>
+              <button className="btn ghost" onClick={() => setUi("start")}>
+                뒤로
+              </button>
               <button
                 className="btn primary"
                 disabled={loading}
@@ -560,9 +536,17 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
           <h2>오늘의 질문</h2>
           <h3>남은 시간: {timeLeft}초</h3>
 
-          {/* 텍스트 숨김 + 고음질 오디오/브라우저 TTS */}
+          {/* 텍스트는 숨기고(실제 시험 느낌), 오디오는 서버 MP3(우선) 또는 TTS */}
           {qAudioUrl ? (
-            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+            <div
+              style={{
+                marginTop: 16,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
               <audio
                 ref={qAudioRef}
                 src={qAudioUrl}
@@ -592,13 +576,21 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
               </button>
             </div>
           ) : useTTS ? (
-            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+            <div
+              style={{
+                marginTop: 16,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
               <img src={IMAGE_URL} alt="avatar" style={{ maxWidth: 320, borderRadius: 12 }} />
               <button
                 className="btn primary"
-                onClick={async () => {
+                onClick={() => {
                   window.speechSynthesis.cancel();
-                  await speakTTS(question);
+                  playTTS(question);
                   if (!hasStartedAudio) {
                     setHasStartedAudio(true);
                     setTimeLeft(60);
@@ -629,7 +621,20 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
             </div>
           )}
 
-          <button onClick={fetchQuestionFromGPT} disabled={loading}>
+          <button
+            onClick={async () => {
+              // 다음 질문 받기 전에 현재 재생 중단
+              try {
+                window.speechSynthesis.cancel();
+                if (qAudioRef.current) {
+                  qAudioRef.current.pause();
+                  qAudioRef.current.currentTime = 0;
+                }
+              } catch { }
+              await fetchQuestionFromGPT();
+            }}
+            disabled={loading}
+          >
             <i className="fas fa-shuffle"></i> {loading ? "새 질문 로딩…" : "다른 질문 받기"}
           </button>
 
@@ -665,7 +670,11 @@ Question: ${question}
                   const data = await res.json();
                   const answer = (data?.answer || "").trim();
                   if (answer) {
-                    setMemo((prev) => prev + `\n\n\n➡️ GPT 모범답안:\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${answer}`);
+                    setMemo(
+                      (prev) =>
+                        prev +
+                        `\n\n\n➡️ GPT 모범답안:\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${answer}`
+                    );
                   } else {
                     alert("모범답안 생성 실패");
                   }
@@ -732,7 +741,10 @@ Question: ${question}
       <>
         <div className="App started review-mode">
           <h2>
-            <i className="fas fa-book-journal-whills" style={{ color: "#4e47d1", marginRight: 10 }}></i>
+            <i
+              className="fas fa-book-journal-whills"
+              style={{ color: "#4e47d1", marginRight: 10 }}
+            ></i>
             저장된 질문과 답변
           </h2>
 
@@ -757,13 +769,23 @@ Question: ${question}
             >
               <p>
                 <strong>
-                  <i className="fas fa-question-circle" style={{ marginRight: 8, color: "#6c63ff" }}></i>
+                  <i
+                    className="fas fa-question-circle"
+                    style={{ marginRight: 8, color: "#6c63ff" }}
+                  ></i>
                   Q{index + 1}. {item.question}
                 </strong>
               </p>
 
-              <button onClick={() => setOpenAnswerIndex(openAnswerIndex === index ? null : index)}>
-                <i className={`fas ${openAnswerIndex === index ? "fa-chevron-up" : "fa-comment-dots"}`}></i>
+              <button
+                onClick={() =>
+                  setOpenAnswerIndex(openAnswerIndex === index ? null : index)
+                }
+              >
+                <i
+                  className={`fas ${openAnswerIndex === index ? "fa-chevron-up" : "fa-comment-dots"
+                    }`}
+                ></i>
                 &nbsp;{openAnswerIndex === index ? "답변 숨기기" : "답변 보기"}
               </button>
 
