@@ -646,7 +646,7 @@ Question: ${question}
 
         {showScrollTop && (
           <button
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            onClick={scrollToTop}
             title="맨 위로"
             style={{
               position: "fixed",
@@ -722,8 +722,7 @@ Question: ${question}
               }
             >
               <i
-                className={`fas ${openAnswerIndex === index ? "fa-chevron-up" : "fa-comment-dots"
-                  }`}
+                className={`fas ${openAnswerIndex === index ? "fa-chevron-up" : "fa-comment-dots"}`}
               ></i>
               &nbsp;{openAnswerIndex === index ? "답변 숨기기" : "답변 보기"}
             </button>
@@ -747,7 +746,7 @@ Question: ${question}
 
         {showScrollTop && (
           <button
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            onClick={scrollToTop}
             title="맨 위로"
             style={{
               position: "fixed",
