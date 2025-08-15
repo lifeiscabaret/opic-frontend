@@ -3,15 +3,22 @@ import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 
-// ✅ 백엔드 URL (env 우선, 없으면 Render 주소 사용)
+// ===== 환경 =====
 const API_BASE =
   process.env.REACT_APP_API_BASE_URL || "https://opic-backend.onrender.com";
 
-// ✅ 아바타 이미지 경로 (env > /public/avatar.png)
 const IMAGE_URL =
-  process.env.REACT_APP_AVATAR_IMAGE_URL || `${window.location.origin}/avatar.png`;
+  process.env.REACT_APP_AVATAR_IMAGE_URL ||
+  `${window.location.origin}/avatar.png`;
 
-// 로컬스토리지 키
+// ===== 캐시/세션 제어 =====
+const AVATAR_CACHE_KEY = "opic:avatarCache"; // { [question]: videoUrl }
+const DID_SESSION_COUNT_KEY = "opic:didCount"; // sessionStorage 카운터
+const MAX_DID_PER_SESSION = Number(
+  process.env.REACT_APP_MAX_DID_PER_SESSION || 3
+); // 세션당 D‑ID 생성 상한
+
+// ===== 로컬스토리지 키 =====
 const LS = {
   level: "opic:level",
   role: "opic:role",
@@ -21,7 +28,7 @@ const LS = {
   history: "opicHistory",
 };
 
-// 설문 옵션
+// ===== 설문 옵션 =====
 const SURVEY = {
   residenceOptions: [
     "개인 주택/아파트 단독 거주",
@@ -56,8 +63,8 @@ const SURVEY = {
   ],
 };
 
-// 🗣️ D‑ID: 텍스트를 립싱크 영상 URL로 변환
-async function speakText(text) {
+// ===== 서버가 D‑ID 영상 생성 (텍스트→립싱크 URL) =====
+async function speakTextWithDid(text) {
   try {
     const res = await fetch(`${API_BASE}/speak`, {
       method: "POST",
@@ -70,27 +77,43 @@ async function speakText(text) {
     });
 
     if (!res.ok) {
-      const ct = res.headers.get("content-type") || "";
       const body = await res.text();
-      console.error("[/speak error]", res.status, ct, body.slice(0, 500));
+      console.error("[/speak error]", res.status, body.slice(0, 500));
+      // (크레딧 부족 등) 실패면 null → TTS 폴백
       return null;
     }
-
     const data = await res.json();
     return data?.videoUrl || null;
   } catch (e) {
-    console.error(e);
+    console.error("[/speak exception]", e);
     return null;
   }
 }
 
-function App() {
-  // UI 상태: start | survey | practice | review
-  const [ui, setUi] = useState("start");
+// ===== 브라우저 TTS (크레딧 소모 없음) =====
+function playTTS(text) {
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "en-US";
+    const voices = window.speechSynthesis.getVoices();
+    const preferred =
+      voices.find((v) => /en-?US/i.test(v.lang) && /female|Jenny|Google US English/i.test(v.name)) ||
+      voices.find((v) => /en-?US/i.test(v.lang)) ||
+      voices[0];
+    if (preferred) u.voice = preferred;
+    window.speechSynthesis.speak(u);
+  } catch (e) {
+    console.warn("TTS unavailable:", e?.message);
+  }
+}
 
-  // 공통 상태
+function App() {
+  // ===== UI/진행 상태 =====
+  const [ui, setUi] = useState("start"); // start | survey | practice | review
   const [serverReady, setServerReady] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [examStarted, setExamStarted] = useState(false); // ✅ 재생 시작 시 타이머 스타트
 
   // 설문 상태
   const [level, setLevel] = useState(localStorage.getItem(LS.level) || "IH–AL");
@@ -113,11 +136,12 @@ function App() {
   const [openAnswerIndex, setOpenAnswerIndex] = useState(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
-  // 아바타 영상
-  const [avatarUrl, setAvatarUrl] = useState("");
+  // 아바타/재생 모드
+  const [avatarUrl, setAvatarUrl] = useState(""); // 영상 URL
+  const [useTTS, setUseTTS] = useState(false);   // TTS 모드 여부
   const avatarRef = useRef(null);
 
-  // 서버 깨우기
+  // ===== 서버 깨우기 (콜드스타트 대비) =====
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   async function wakeBackend() {
     const controller = new AbortController();
@@ -147,7 +171,7 @@ function App() {
     };
   }, []);
 
-  // 설문 핸들러
+  // ===== 설문 핸들러 =====
   const changeLevel = (v) => { setLevel(v); localStorage.setItem(LS.level, v); };
   const changeResidence = (v) => { setResidence(v); localStorage.setItem(LS.residence, v); };
   const changeRole = (v) => { setRole(v); localStorage.setItem(LS.role, v); };
@@ -160,32 +184,47 @@ function App() {
     });
   }
 
-  // ⏯️ 아바타 재생 유틸
+  // ===== 영상/오디오 재생 유틸 =====
   const playAvatar = () => {
     const v = avatarRef.current;
     if (!v) return;
     try {
-      v.muted = false;      // 사용자 제스처(버튼 클릭 이후)라면 해제 가능
+      v.muted = false;
       v.currentTime = 0;
-      v.play().catch((e) => {
-        // 브라우저 정책으로 막히면 버튼으로 듣게 두자
-        console.warn("Autoplay prevented, use replay button.", e?.message);
-      });
-    } catch (e) {
-      console.warn("Video play error:", e?.message);
+      v.play().catch(() => { });
+    } catch { }
+  };
+  const replay = () => {
+    if (useTTS) {
+      playTTS(question);
+      setExamStarted(true); // ✅ TTS 재생 시 타이머 시작
+    } else {
+      const v = avatarRef.current;
+      if (!v) return;
+      v.currentTime = 0;
+      const p = v.play();
+      if (p && typeof p.then === "function") {
+        p.then(() => setExamStarted(true)).catch(() => { });
+      } else {
+        setExamStarted(true);
+      }
     }
   };
 
-  // 질문 생성 + 아바타 자동재생
+  // ===== 질문 생성 + (캐시→D‑ID→TTS) 흐름 =====
   const fetchQuestionFromGPT = async () => {
     setLoading(true);
     try {
+      // 초기화
       setTimeLeft(60);
       setIsFinished(false);
       setMemo("");
       setAudioURL("");
       setAvatarUrl("");
+      setUseTTS(false);
+      setExamStarted(false); // ✅ 새 문제에서 타이머 잠시 멈춤
 
+      // 설문 기반 프롬프트 구성
       const chosenLabels = SURVEY.topics
         .filter((t) => selectedTopics.includes(t.key))
         .map((t) => t.label);
@@ -212,51 +251,90 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
 - One concise question only (18–30 words). No Q1/Q2 numbering, no extra explanations.
 `.trim();
 
+      // 질문 생성
       const res = await fetch(`${API_BASE}/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: prompt }),
       });
-
       const data = await res.json();
       const message = (data?.answer || "").trim();
       setQuestion(message || "질문을 불러오지 못했습니다.");
 
-      if (message) {
-        const url = await speakText(message);
+      if (!message) {
+        setUseTTS(true);
+        playTTS("Sorry, I couldn't load the question.");
+        setExamStarted(true); // ✅ 오류 안내 음성이라도 시작했으니 타이머 스타트
+        return;
+      }
+
+      // 1) 캐시 먼저
+      const cache = JSON.parse(localStorage.getItem(AVATAR_CACHE_KEY) || "{}");
+      if (cache[message]) {
+        setAvatarUrl(cache[message]);
+        setUseTTS(false);
+        // 실제 영상은 아래 useEffect('playing')에서 타이머 시작
+        return;
+      }
+
+      // 2) 세션 상한 내에서만 D‑ID 생성 시도
+      const count = Number(sessionStorage.getItem(DID_SESSION_COUNT_KEY) || 0);
+      if (count < MAX_DID_PER_SESSION) {
+        const url = await speakTextWithDid(message);
         if (url) {
-          setAvatarUrl(url); // useEffect에서 자동 재생
+          const next = { ...cache, [message]: url };
+          localStorage.setItem(AVATAR_CACHE_KEY, JSON.stringify(next));
+          sessionStorage.setItem(DID_SESSION_COUNT_KEY, String(count + 1));
+          setAvatarUrl(url);
+          setUseTTS(false);
+          return;
         }
       }
+
+      // 3) 실패/상한 초과 → TTS 폴백
+      setUseTTS(true);
+      playTTS(message);
+      setExamStarted(true); // ✅ TTS 바로 시작
     } catch (error) {
       console.error("질문 생성 오류:", error);
       setQuestion("질문을 불러오는 중 오류가 발생했습니다.");
+      setUseTTS(true);
+      playTTS("Sorry, something went wrong.");
+      setExamStarted(true);
     } finally {
       setLoading(false);
     }
   };
 
-  // 아바타 URL이 생기면 자동 재생 (practice 화면일 때만)
+  // 아바타 URL이 생기면 로드 → 재생 → 실제 playing 시 타이머 시작
   useEffect(() => {
     if (ui !== "practice" || !avatarUrl) return;
     const v = avatarRef.current;
     if (!v) return;
-    const handler = () => playAvatar();
-    v.addEventListener("loadeddata", handler, { once: true });
-    return () => v && v.removeEventListener("loadeddata", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    const onLoaded = () => {
+      try { v.muted = false; v.currentTime = 0; v.play().catch(() => { }); } catch { }
+    };
+    const onPlaying = () => setExamStarted(true); // ✅ 실제 재생 시작 시 타이머 시작
+
+    v.addEventListener("loadeddata", onLoaded, { once: true });
+    v.addEventListener("playing", onPlaying, { once: true });
+    return () => {
+      v.removeEventListener("loadeddata", onLoaded);
+      v.removeEventListener("playing", onPlaying);
+    };
   }, [avatarUrl, ui]);
 
-  // 타이머
+  // 타이머 (실제 재생 시작 전까지 대기)
   useEffect(() => {
-    if (ui !== "practice") return;
+    if (ui !== "practice" || !examStarted) return;
     if (timeLeft === 0) {
       setIsFinished(true);
       return;
     }
-    const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
-    return () => clearInterval(timer);
-  }, [timeLeft, ui]);
+    const t = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
+    return () => clearInterval(t);
+  }, [ui, examStarted, timeLeft]);
 
   // 모범답안
   const fetchBestAnswerFromGPT = async () => {
@@ -289,7 +367,7 @@ Question: ${question}
     }
   };
 
-  // 브라우저→OpenAI 직접 STT
+  // STT
   const transcribeAudio = async (audioBlob) => {
     const formData = new FormData();
     formData.append("file", audioBlob, "recording.webm");
@@ -345,7 +423,7 @@ Question: ${question}
     alert("저장되었습니다!");
   };
 
-  // 저장 보기/돌아가기
+  // 저장 보기/복귀
   const toggleSavedView = () => {
     const history = JSON.parse(localStorage.getItem(LS.history) || "[]");
     setSavedHistory(history);
@@ -368,7 +446,7 @@ Question: ${question}
   }, []);
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
-  // 공용 로딩 오버레이
+  // 로딩 오버레이
   const LoadingOverlay = () =>
     loading ? (
       <div className="loading-overlay">
@@ -377,8 +455,7 @@ Question: ${question}
       </div>
     ) : null;
 
-  // ===== 화면들 =====
-
+  // ===== 화면 렌더 =====
   if (!serverReady) {
     return (
       <>
@@ -396,11 +473,7 @@ Question: ${question}
       <>
         <div className="start-screen">
           <h1 className="start-title">OPIC</h1>
-          <p
-            className="start-subtitle"
-            onClick={() => setUi("survey")}
-            style={{ cursor: "pointer" }}
-          >
+          <p className="start-subtitle" onClick={() => setUi("survey")} style={{ cursor: "pointer" }}>
             Let’s start practice
           </p>
         </div>
@@ -424,9 +497,7 @@ Question: ${question}
                 <label>레벨</label>
                 <select value={level} onChange={(e) => changeLevel(e.target.value)}>
                   {["IM2–IH", "IL–IM1", "IH–AL"].map((l) => (
-                    <option key={l} value={l}>
-                      {l}
-                    </option>
+                    <option key={l} value={l}>{l}</option>
                   ))}
                 </select>
               </div>
@@ -436,9 +507,7 @@ Question: ${question}
                 <select value={residence} onChange={(e) => changeResidence(e.target.value)}>
                   <option value="">(선택)</option>
                   {SURVEY.residenceOptions.map((x) => (
-                    <option key={x} value={x}>
-                      {x}
-                    </option>
+                    <option key={x} value={x}>{x}</option>
                   ))}
                 </select>
               </div>
@@ -448,24 +517,17 @@ Question: ${question}
                 <select value={role} onChange={(e) => changeRole(e.target.value)}>
                   <option value="">(선택)</option>
                   {SURVEY.roles.map((x) => (
-                    <option key={x} value={x}>
-                      {x}
-                    </option>
+                    <option key={x} value={x}>{x}</option>
                   ))}
                 </select>
               </div>
 
               <div className="field">
                 <label>최근 수강 이력</label>
-                <select
-                  value={recentCourse}
-                  onChange={(e) => changeRecentCourse(e.target.value)}
-                >
+                <select value={recentCourse} onChange={(e) => changeRecentCourse(e.target.value)}>
                   <option value="">(선택)</option>
                   {SURVEY.recentCourseOptions.map((x) => (
-                    <option key={x} value={x}>
-                      {x}
-                    </option>
+                    <option key={x} value={x}>{x}</option>
                   ))}
                 </select>
               </div>
@@ -491,9 +553,7 @@ Question: ${question}
             </div>
 
             <div className="actions">
-              <button className="btn ghost" onClick={() => setUi("start")}>
-                뒤로
-              </button>
+              <button className="btn ghost" onClick={() => setUi("start")}>뒤로</button>
               <button
                 className="btn primary"
                 disabled={loading}
@@ -519,7 +579,7 @@ Question: ${question}
           <h2>오늘의 질문</h2>
           <h3>남은 시간: {timeLeft}초</h3>
 
-          {/* 🔊 실제 시험처럼: 텍스트는 숨기고(렌더 X), 아바타가 질문 영역에서 자동 재생 */}
+          {/* 실제 시험처럼: 텍스트는 숨기고, 영상 또는 TTS로만 청취 */}
           {avatarUrl ? (
             <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
               <video
@@ -530,9 +590,12 @@ Question: ${question}
                 className="avatar-video"
                 style={{ maxWidth: 420, borderRadius: 12 }}
               />
-              <button className="btn primary" onClick={playAvatar}>
-                ▶ 다시 듣기
-              </button>
+              <button className="btn primary" onClick={replay}>▶ 다시 듣기</button>
+            </div>
+          ) : useTTS ? (
+            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+              <div className="tts-placeholder">🔊 질문 준비됨 (TTS)</div>
+              <button className="btn primary" onClick={replay}>▶ 다시 듣기</button>
             </div>
           ) : (
             <p className="question-text">질문 준비 중…</p>
@@ -548,7 +611,6 @@ Question: ${question}
             </button>
           )}
 
-          {/* 내 녹음 미리듣기 */}
           {audioURL && (
             <div style={{ marginTop: 12 }}>
               <audio controls src={audioURL} />
@@ -584,14 +646,8 @@ Question: ${question}
             </>
           )}
 
-          {/* 설문 다시하기 */}
           <div className="practice-actions">
-            <button
-              type="button"
-              className="btn-reset"
-              onClick={() => setUi("survey")}
-              title="설문 다시하기"
-            >
+            <button type="button" className="btn-reset" onClick={() => setUi("survey")} title="설문 다시하기">
               <i className="fas fa-arrow-left icon-nudge" aria-hidden="true"></i>
               설문 다시하기
             </button>
