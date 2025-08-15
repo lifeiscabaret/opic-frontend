@@ -8,7 +8,8 @@ const API_BASE =
   process.env.REACT_APP_API_BASE_URL || "https://opic-backend.onrender.com";
 
 // ✅ MidJourney로 만든 이미지의 "공개 URL"
-const IMAGE_URL = "/avatar.png";
+const IMAGE_URL =
+  process.env.REACT_APP_AVATAR_IMAGE_URL || `${window.location.origin}/avatar.png`;
 
 // 로컬스토리지 키
 const LS = {
@@ -68,6 +69,15 @@ async function speakText(text) {
         voice: "en-US-JennyNeural",
       }),
     });
+
+    // 4xx/5xx 대응: 본문 읽고 의미 있는 에러 로그 남기기
+    if (!res.ok) {
+      const ct = res.headers.get("content-type") || "";
+      const body = await res.text();
+      console.error("[/speak error]", res.status, ct, body.slice(0, 500));
+      return null;
+    }
+
     const data = await res.json();
     return data?.videoUrl || null;
   } catch (e) {
@@ -106,6 +116,9 @@ function App() {
   // 스크롤탑
   const [showScrollTop, setShowScrollTop] = useState(false);
 
+  // 로딩 스피너 상태
+  const [loading, setLoading] = useState(false);
+
   // 아바타 비디오 URL (있을 때만 렌더) + ref
   const [avatarUrl, setAvatarUrl] = useState("");
   const avatarRef = useRef(null);
@@ -125,6 +138,7 @@ function App() {
       clearTimeout(timeout);
     }
   }
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -165,8 +179,9 @@ function App() {
     });
   }
 
-  // 질문 생성 (설문 반영)
+  // 질문 생성 (설문 반영) + 로딩 스피너
   const fetchQuestionFromGPT = async () => {
+    setLoading(true);
     try {
       setTimeLeft(60);
       setIsFinished(false);
@@ -218,6 +233,8 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
     } catch (error) {
       console.error("질문 생성 오류:", error);
       setQuestion("질문을 불러오는 중 오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -345,433 +362,459 @@ Question: ${question}
   }, []);
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
+  // 공용 로딩 오버레이
+  const LoadingOverlay = () =>
+    loading ? (
+      <div className="loading-overlay">
+        <div className="spinner" aria-label="loading" />
+        <div className="loading-text">로딩 중…</div>
+      </div>
+    ) : null;
+
   // 콜드스타트 표시
   if (!serverReady) {
     return (
-      <div className="start-screen">
-        <h1 className="start-title">OPIC</h1>
-        <p className="start-subtitle">서버 깨우는 중… (최대 50초)</p>
+      <>
+        <div className="start-screen">
+          <h1 className="start-title">OPIC</h1>
+          <p className="start-subtitle">서버 깨우는 중… (최대 50초)</p>
 
-        {/* 아바타 (선택) */}
-        {avatarUrl && (
-          <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-            <video
-              ref={avatarRef}
-              src={avatarUrl}
-              autoPlay
-              muted
-              playsInline
-              className="avatar-video"
-              style={{ maxWidth: 320, borderRadius: 12 }}
-            />
-            <button
-              onClick={() => {
-                if (avatarRef.current) {
-                  avatarRef.current.muted = false;
-                  avatarRef.current.currentTime = 0;
-                  avatarRef.current.play().catch(() => { });
-                }
-              }}
-            >
-              ▶ 아바타 음성 재생
-            </button>
-          </div>
-        )}
-      </div>
+          {/* 아바타 (선택) */}
+          {avatarUrl && (
+            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+              <video
+                ref={avatarRef}
+                src={avatarUrl}
+                autoPlay
+                muted
+                playsInline
+                className="avatar-video"
+                style={{ maxWidth: 320, borderRadius: 12 }}
+              />
+              <button
+                onClick={() => {
+                  if (avatarRef.current) {
+                    avatarRef.current.muted = false;
+                    avatarRef.current.currentTime = 0;
+                    avatarRef.current.play().catch(() => { });
+                  }
+                }}
+              >
+                ▶ 아바타 음성 재생
+              </button>
+            </div>
+          )}
+        </div>
+        <LoadingOverlay />
+      </>
     );
   }
 
   // 시작 화면: 클릭 → 설문
   if (ui === "start") {
     return (
-      <div className="start-screen">
-        <h1 className="start-title">OPIC</h1>
-        <p
-          className="start-subtitle"
-          onClick={() => setUi("survey")}
-          style={{ cursor: "pointer" }}
-        >
-          Let’s start practice
-        </p>
+      <>
+        <div className="start-screen">
+          <h1 className="start-title">OPIC</h1>
+          <p
+            className="start-subtitle"
+            onClick={() => setUi("survey")}
+            style={{ cursor: "pointer" }}
+          >
+            Let’s start practice
+          </p>
 
-        {/* 아바타 (선택) */}
-        {avatarUrl && (
-          <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-            <video
-              ref={avatarRef}
-              src={avatarUrl}
-              autoPlay
-              muted
-              playsInline
-              className="avatar-video"
-              style={{ maxWidth: 320, borderRadius: 12 }}
-            />
-            <button
-              onClick={() => {
-                if (avatarRef.current) {
-                  avatarRef.current.muted = false;
-                  avatarRef.current.currentTime = 0;
-                  avatarRef.current.play().catch(() => { });
-                }
-              }}
-            >
-              ▶ 아바타 음성 재생
-            </button>
-          </div>
-        )}
-      </div>
+          {/* 아바타 (선택) */}
+          {avatarUrl && (
+            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+              <video
+                ref={avatarRef}
+                src={avatarUrl}
+                autoPlay
+                muted
+                playsInline
+                className="avatar-video"
+                style={{ maxWidth: 320, borderRadius: 12 }}
+              />
+              <button
+                onClick={() => {
+                  if (avatarRef.current) {
+                    avatarRef.current.muted = false;
+                    avatarRef.current.currentTime = 0;
+                    avatarRef.current.play().catch(() => { });
+                  }
+                }}
+              >
+                ▶ 아바타 음성 재생
+              </button>
+            </div>
+          )}
+        </div>
+        <LoadingOverlay />
+      </>
     );
   }
 
   // 설문 페이지
   if (ui === "survey") {
     return (
-      <div className="survey-wrap">
-        <div className="survey-card">
-          <h2 className="survey-title">
-            <i className="fa-regular fa-file-lines" style={{ marginRight: 10 }} />
-            OPIC Survey
-          </h2>
+      <>
+        <div className="survey-wrap">
+          <div className="survey-card">
+            <h2 className="survey-title">
+              <i className="fa-regular fa-file-lines" style={{ marginRight: 10 }} />
+              OPIC Survey
+            </h2>
 
-          <div className="survey-grid">
-            <div className="field">
-              <label>레벨</label>
-              <select value={level} onChange={(e) => changeLevel(e.target.value)}>
-                {["IM2–IH", "IL–IM1", "IH–AL"].map((l) => (
-                  <option key={l} value={l}>
-                    {l}
-                  </option>
-                ))}
-              </select>
+            <div className="survey-grid">
+              <div className="field">
+                <label>레벨</label>
+                <select value={level} onChange={(e) => changeLevel(e.target.value)}>
+                  {["IM2–IH", "IL–IM1", "IH–AL"].map((l) => (
+                    <option key={l} value={l}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field">
+                <label>거주 형태</label>
+                <select value={residence} onChange={(e) => changeResidence(e.target.value)}>
+                  <option value="">(선택)</option>
+                  {SURVEY.residenceOptions.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field">
+                <label>역할</label>
+                <select value={role} onChange={(e) => changeRole(e.target.value)}>
+                  <option value="">(선택)</option>
+                  {SURVEY.roles.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field">
+                <label>최근 수강 이력</label>
+                <select
+                  value={recentCourse}
+                  onChange={(e) => changeRecentCourse(e.target.value)}
+                >
+                  <option value="">(선택)</option>
+                  {SURVEY.recentCourseOptions.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            <div className="field">
-              <label>거주 형태</label>
-              <select value={residence} onChange={(e) => changeResidence(e.target.value)}>
-                <option value="">(선택)</option>
-                {SURVEY.residenceOptions.map((x) => (
-                  <option key={x} value={x}>
-                    {x}
-                  </option>
-                ))}
-              </select>
+            <div className="topics">
+              <div className="topics-head">Topics (multi‑select)</div>
+              <div className="chip-row">
+                {SURVEY.topics.map((t) => {
+                  const active = selectedTopics.includes(t.key);
+                  return (
+                    <button
+                      key={t.key}
+                      onClick={() => toggleTopic(t.key)}
+                      className={`chip ${active ? "active" : ""}`}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="hint">
+                아무 것도 선택하지 않으면 모든 주제에서 무작위로 출제됩니다.
+              </p>
             </div>
 
-            <div className="field">
-              <label>역할</label>
-              <select value={role} onChange={(e) => changeRole(e.target.value)}>
-                <option value="">(선택)</option>
-                {SURVEY.roles.map((x) => (
-                  <option key={x} value={x}>
-                    {x}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="field">
-              <label>최근 수강 이력</label>
-              <select
-                value={recentCourse}
-                onChange={(e) => changeRecentCourse(e.target.value)}
+            <div className="actions">
+              <button className="btn ghost" onClick={() => setUi("start")}>
+                뒤로
+              </button>
+              <button
+                className="btn primary"
+                disabled={loading}
+                onClick={async () => {
+                  await fetchQuestionFromGPT(); // 로딩 오버레이 on
+                  setUi("practice");
+                }}
               >
-                <option value="">(선택)</option>
-                {SURVEY.recentCourseOptions.map((x) => (
-                  <option key={x} value={x}>
-                    {x}
-                  </option>
-                ))}
-              </select>
+                {loading ? "로딩 중..." : "이 설정으로 시작"}
+              </button>
             </div>
           </div>
 
-          <div className="topics">
-            <div className="topics-head">Topics (multi‑select)</div>
-            <div className="chip-row">
-              {SURVEY.topics.map((t) => {
-                const active = selectedTopics.includes(t.key);
-                return (
-                  <button
-                    key={t.key}
-                    onClick={() => toggleTopic(t.key)}
-                    className={`chip ${active ? "active" : ""}`}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
+          {/* 아바타 (선택) */}
+          {avatarUrl && (
+            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+              <video
+                ref={avatarRef}
+                src={avatarUrl}
+                autoPlay
+                muted
+                playsInline
+                className="avatar-video"
+                style={{ maxWidth: 320, borderRadius: 12 }}
+              />
+              <button
+                onClick={() => {
+                  if (avatarRef.current) {
+                    avatarRef.current.muted = false;
+                    avatarRef.current.currentTime = 0;
+                    avatarRef.current.play().catch(() => { });
+                  }
+                }}
+              >
+                ▶ 아바타 음성 재생
+              </button>
             </div>
-            <p className="hint">
-              아무 것도 선택하지 않으면 모든 주제에서 무작위로 출제됩니다.
-            </p>
-          </div>
-
-          <div className="actions">
-            <button className="btn ghost" onClick={() => setUi("start")}>
-              뒤로
-            </button>
-            <button
-              className="btn primary"
-              onClick={async () => {
-                await fetchQuestionFromGPT();
-                setUi("practice");
-              }}
-            >
-              이 설정으로 시작
-            </button>
-          </div>
+          )}
         </div>
-
-        {/* 아바타 (선택) */}
-        {avatarUrl && (
-          <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-            <video
-              ref={avatarRef}
-              src={avatarUrl}
-              autoPlay
-              muted
-              playsInline
-              className="avatar-video"
-              style={{ maxWidth: 320, borderRadius: 12 }}
-            />
-            <button
-              onClick={() => {
-                if (avatarRef.current) {
-                  avatarRef.current.muted = false;
-                  avatarRef.current.currentTime = 0;
-                  avatarRef.current.play().catch(() => { });
-                }
-              }}
-            >
-              ▶ 아바타 음성 재생
-            </button>
-          </div>
-        )}
-      </div>
+        <LoadingOverlay />
+      </>
     );
   }
 
   // 연습 화면
   if (ui === "practice") {
     return (
-      <div className="App started">
-        <h2>오늘의 질문</h2>
-        <h3>남은 시간: {timeLeft}초</h3>
-        <p className="question-text">{question || "로딩 중..."}</p>
+      <>
+        <div className="App started">
+          <h2>오늘의 질문</h2>
+          <h3>남은 시간: {timeLeft}초</h3>
+          <p className="question-text">{question || "로딩 중..."}</p>
 
-        {!isRecording ? (
-          <button onClick={startRecording}>
-            <i className="fas fa-microphone"></i> 녹음 시작
+          {!isRecording ? (
+            <button onClick={startRecording}>
+              <i className="fas fa-microphone"></i> 녹음 시작
+            </button>
+          ) : (
+            <button onClick={stopRecording}>
+              <i className="fas fa-stop-circle"></i> 녹음 정지
+            </button>
+          )}
+
+          {/* 내 녹음 미리듣기 */}
+          {audioURL && (
+            <div style={{ marginTop: 12 }}>
+              <audio controls src={audioURL} />
+            </div>
+          )}
+
+          <button onClick={fetchQuestionFromGPT} disabled={loading}>
+            <i className="fas fa-shuffle"></i> {loading ? "새 질문 로딩…" : "다른 질문 받기"}
           </button>
-        ) : (
-          <button onClick={stopRecording}>
-            <i className="fas fa-stop-circle"></i> 녹음 정지
-          </button>
-        )}
 
-        {/* 내 녹음 미리듣기 */}
-        {audioURL && (
-          <div style={{ marginTop: 12 }}>
-            <audio controls src={audioURL} />
-          </div>
-        )}
-
-        <button onClick={fetchQuestionFromGPT}>
-          <i className="fas fa-shuffle"></i> 다른 질문 받기
-        </button>
-
-        <div style={{ marginTop: "40px" }}>
-          <h3>📝 내 답변 메모하기</h3>
-          <textarea
-            value={memo}
-            onChange={(e) => setMemo(e.target.value)}
-            rows={5}
-            cols={50}
-            placeholder="여기에 영어로 말한 내용을 적어보세요!"
-          />
-        </div>
-
-        {isFinished && (
-          <>
-            <button onClick={fetchBestAnswerFromGPT}>
-              <i className="fas fa-magic"></i> 모범답안 요청하기
-            </button>
-            <button onClick={handleSave}>
-              <i className="fas fa-floppy-disk"></i> 질문 + 메모 저장
-            </button>
-            <button onClick={toggleSavedView}>
-              <i className="fas fa-folder-open"></i> 저장된 질문/답변 보기
-            </button>
-          </>
-        )}
-
-        {/* 아바타 */}
-        {avatarUrl && (
-          <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-            <video
-              ref={avatarRef}
-              src={avatarUrl}
-              autoPlay
-              muted
-              playsInline
-              className="avatar-video"
-              style={{ maxWidth: 320, borderRadius: 12 }}
+          <div style={{ marginTop: "40px" }}>
+            <h3>📝 내 답변 메모하기</h3>
+            <textarea
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              rows={5}
+              cols={50}
+              placeholder="여기에 영어로 말한 내용을 적어보세요!"
             />
+          </div>
+
+          {isFinished && (
+            <>
+              <button onClick={fetchBestAnswerFromGPT}>
+                <i className="fas fa-magic"></i> 모범답안 요청하기
+              </button>
+              <button onClick={handleSave}>
+                <i className="fas fa-floppy-disk"></i> 질문 + 메모 저장
+              </button>
+              <button onClick={toggleSavedView}>
+                <i className="fas fa-folder-open"></i> 저장된 질문/답변 보기
+              </button>
+            </>
+          )}
+
+          {/* 아바타 */}
+          {avatarUrl && (
+            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+              <video
+                ref={avatarRef}
+                src={avatarUrl}
+                autoPlay
+                muted
+                playsInline
+                className="avatar-video"
+                style={{ maxWidth: 320, borderRadius: 12 }}
+              />
+              <button
+                onClick={() => {
+                  if (avatarRef.current) {
+                    avatarRef.current.muted = false;
+                    avatarRef.current.currentTime = 0;
+                    avatarRef.current.play().catch(() => { });
+                  }
+                }}
+              >
+                ▶ 아바타 음성 재생
+              </button>
+            </div>
+          )}
+
+          {/* 하단 설문 다시하기 버튼 */}
+          <div className="practice-actions">
             <button
-              onClick={() => {
-                if (avatarRef.current) {
-                  avatarRef.current.muted = false;
-                  avatarRef.current.currentTime = 0;
-                  avatarRef.current.play().catch(() => { });
-                }
+              type="button"
+              className="btn-reset"
+              onClick={() => setUi("survey")}
+              title="설문 다시하기"
+            >
+              <i className="fas fa-arrow-left icon-nudge" aria-hidden="true"></i>
+              설문 다시하기
+            </button>
+          </div>
+
+          {showScrollTop && (
+            <button
+              onClick={scrollToTop}
+              title="맨 위로"
+              style={{
+                position: "fixed",
+                bottom: "30px",
+                left: "50%",
+                transform: "translateX(-50%)",
+                backgroundColor: "#4e47d1",
+                color: "white",
+                border: "none",
+                borderRadius: "50%",
+                width: "50px",
+                height: "50px",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                fontSize: "22px",
+                cursor: "pointer",
+                boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
+                zIndex: 1000,
               }}
             >
-              ▶ 아바타 음성 재생
+              <i className="fas fa-arrow-up"></i>
             </button>
-          </div>
-        )}
-
-        {/* 하단 설문 다시하기 버튼 */}
-        <div className="practice-actions">
-          <button
-            type="button"
-            className="btn-reset"
-            onClick={() => setUi("survey")}
-            title="설문 다시하기"
-          >
-            <i className="fas fa-arrow-left icon-nudge" aria-hidden="true"></i>
-            설문 다시하기
-          </button>
+          )}
         </div>
-
-        {showScrollTop && (
-          <button
-            onClick={scrollToTop}
-            title="맨 위로"
-            style={{
-              position: "fixed",
-              bottom: "30px",
-              left: "50%",
-              transform: "translateX(-50%)",
-              backgroundColor: "#4e47d1",
-              color: "white",
-              border: "none",
-              borderRadius: "50%",
-              width: "50px",
-              height: "50px",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              fontSize: "22px",
-              cursor: "pointer",
-              boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
-              zIndex: 1000,
-            }}
-          >
-            <i className="fas fa-arrow-up"></i>
-          </button>
-        )}
-      </div>
+        <LoadingOverlay />
+      </>
     );
   }
 
   // 저장 리뷰 화면
   if (ui === "review") {
     return (
-      <div className={`App started review-mode`}>
-        <h2>
-          <i
-            className="fas fa-book-journal-whills"
-            style={{ color: "#4e47d1", marginRight: "10px" }}
-          ></i>{" "}
-          저장된 질문과 답변
-        </h2>
+      <>
+        <div className={`App started review-mode`}>
+          <h2>
+            <i
+              className="fas fa-book-journal-whills"
+              style={{ color: "#4e47d1", marginRight: "10px" }}
+            ></i>{" "}
+            저장된 질문과 답변
+          </h2>
 
-        <button onClick={returnToPractice}>
-          <i className="fas fa-arrow-left"></i> 다른 문제 풀기
-        </button>
-
-        {savedHistory.map((item, index) => (
-          <div
-            key={index}
-            className="question-block"
-            style={{
-              width: "80%",
-              minHeight: "120px",
-              margin: "20px auto",
-              padding: "20px",
-              border: "1px solid #ccc",
-              borderRadius: "10px",
-              backgroundColor: "#f9f9f9",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-            }}
-          >
-            <p>
-              <strong>
-                <i
-                  className="fas fa-question-circle"
-                  style={{ marginRight: "8px", color: "#6c63ff" }}
-                ></i>
-                Q{index + 1}. {item.question}
-              </strong>
-            </p>
-
-            <button
-              onClick={() =>
-                setOpenAnswerIndex(openAnswerIndex === index ? null : index)
-              }
-            >
-              <i
-                className={`fas ${openAnswerIndex === index ? "fa-chevron-up" : "fa-comment-dots"}`}
-              ></i>
-              &nbsp;{openAnswerIndex === index ? "답변 숨기기" : "답변 보기"}
-            </button>
-
-            {openAnswerIndex === index && (
-              <>
-                <p style={{ marginTop: "8px", whiteSpace: "pre-wrap" }}>
-                  💬 <em>{item.memo}</em>
-                </p>
-                {item.gptAnswer && (
-                  <div className="gpt-answer-box">
-                    <strong>➡️ GPT 모범답안</strong>
-                    <hr />
-                    <em>{item.gptAnswer}</em>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        ))}
-
-        {showScrollTop && (
-          <button
-            onClick={scrollToTop}
-            title="맨 위로"
-            style={{
-              position: "fixed",
-              bottom: "30px",
-              left: "50%",
-              transform: "translateX(-50%)",
-              backgroundColor: "#4e47d1",
-              color: "white",
-              border: "none",
-              borderRadius: "50%",
-              width: "50px",
-              height: "50px",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              fontSize: "22px",
-              cursor: "pointer",
-              boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
-              zIndex: 1000,
-            }}
-          >
-            <i className="fas fa-arrow-up"></i>
+          <button onClick={returnToPractice}>
+            <i className="fas fa-arrow-left"></i> 다른 문제 풀기
           </button>
-        )}
-      </div>
+
+          {savedHistory.map((item, index) => (
+            <div
+              key={index}
+              className="question-block"
+              style={{
+                width: "80%",
+                minHeight: "120px",
+                margin: "20px auto",
+                padding: "20px",
+                border: "1px solid #ccc",
+                borderRadius: "10px",
+                backgroundColor: "#f9f9f9",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              }}
+            >
+              <p>
+                <strong>
+                  <i
+                    className="fas fa-question-circle"
+                    style={{ marginRight: "8px", color: "#6c63ff" }}
+                  ></i>
+                  Q{index + 1}. {item.question}
+                </strong>
+              </p>
+
+              <button
+                onClick={() =>
+                  setOpenAnswerIndex(openAnswerIndex === index ? null : index)
+                }
+              >
+                <i
+                  className={`fas ${openAnswerIndex === index ? "fa-chevron-up" : "fa-comment-dots"
+                    }`}
+                ></i>
+                &nbsp;{openAnswerIndex === index ? "답변 숨기기" : "답변 보기"}
+              </button>
+
+              {openAnswerIndex === index && (
+                <>
+                  <p style={{ marginTop: "8px", whiteSpace: "pre-wrap" }}>
+                    💬 <em>{item.memo}</em>
+                  </p>
+                  {item.gptAnswer && (
+                    <div className="gpt-answer-box">
+                      <strong>➡️ GPT 모범답안</strong>
+                      <hr />
+                      <em>{item.gptAnswer}</em>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+
+          {showScrollTop && (
+            <button
+              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+              title="맨 위로"
+              style={{
+                position: "fixed",
+                bottom: "30px",
+                left: "50%",
+                transform: "translateX(-50%)",
+                backgroundColor: "#4e47d1",
+                color: "white",
+                border: "none",
+                borderRadius: "50%",
+                width: "50px",
+                height: "50px",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                fontSize: "22px",
+                cursor: "pointer",
+                boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
+                zIndex: 1000,
+              }}
+            >
+              <i className="fas fa-arrow-up"></i>
+            </button>
+          )}
+        </div>
+        <LoadingOverlay />
+      </>
     );
   }
 
