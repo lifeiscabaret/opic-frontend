@@ -1,4 +1,3 @@
-// src/App.js
 import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
 import "@fortawesome/fontawesome-free/css/all.min.css";
@@ -79,7 +78,7 @@ async function speakTextWithDid(text) {
     if (!res.ok) {
       const body = await res.text();
       console.error("[/speak error]", res.status, body.slice(0, 500));
-      // (크레딧 부족 등) 실패면 null → TTS 폴백
+      // 402 (InsufficientCredits) 포함 모든 비정상 응답은 null로 처리 → TTS 폴백
       return null;
     }
     const data = await res.json();
@@ -109,11 +108,10 @@ function playTTS(text) {
 }
 
 function App() {
-  // ===== UI/진행 상태 =====
+  // ===== UI 상태 =====
   const [ui, setUi] = useState("start"); // start | survey | practice | review
   const [serverReady, setServerReady] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [examStarted, setExamStarted] = useState(false); // ✅ 재생 시작 시 타이머 스타트
 
   // 설문 상태
   const [level, setLevel] = useState(localStorage.getItem(LS.level) || "IH–AL");
@@ -124,9 +122,10 @@ function App() {
     JSON.parse(localStorage.getItem(LS.topics) || "[]")
   );
 
-  // 연습 상태
+  // 연습/진행 상태
   const [question, setQuestion] = useState("");
   const [timeLeft, setTimeLeft] = useState(60);
+  const [running, setRunning] = useState(false); // ⬅️ 실제 재생 시작 후에만 카운트다운
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [audioURL, setAudioURL] = useState("");
@@ -184,30 +183,29 @@ function App() {
     });
   }
 
-  // ===== 영상/오디오 재생 유틸 =====
-  const playAvatar = () => {
+  // ===== 재생/타이머 시작을 하나로: replay() =====
+  const replay = () => {
+    if (useTTS) {
+      playTTS(question);
+      setRunning(true); // TTS는 시작 시점 알 수 없으니 즉시 시작
+      return;
+    }
     const v = avatarRef.current;
     if (!v) return;
     try {
       v.muted = false;
+      // 재생이 실제 시작되었을 때만 타이머 on
+      const onPlaying = () => {
+        setRunning(true);
+        v.removeEventListener("playing", onPlaying);
+      };
+      v.addEventListener("playing", onPlaying);
       v.currentTime = 0;
-      v.play().catch(() => { });
-    } catch { }
-  };
-  const replay = () => {
-    if (useTTS) {
-      playTTS(question);
-      setExamStarted(true); // ✅ TTS 재생 시 타이머 시작
-    } else {
-      const v = avatarRef.current;
-      if (!v) return;
-      v.currentTime = 0;
-      const p = v.play();
-      if (p && typeof p.then === "function") {
-        p.then(() => setExamStarted(true)).catch(() => { });
-      } else {
-        setExamStarted(true);
-      }
+      v.play().catch(() => {
+        // 자동재생 차단시 타이머도 안 움직이게 유지 (사용자가 ▶ 다시 듣기 누르면 시작)
+      });
+    } catch {
+      /* noop */
     }
   };
 
@@ -217,12 +215,12 @@ function App() {
     try {
       // 초기화
       setTimeLeft(60);
+      setRunning(false);   // ⬅️ 재생될 때까지 카운트다운 멈춤
       setIsFinished(false);
       setMemo("");
       setAudioURL("");
       setAvatarUrl("");
       setUseTTS(false);
-      setExamStarted(false); // ✅ 새 문제에서 타이머 잠시 멈춤
 
       // 설문 기반 프롬프트 구성
       const chosenLabels = SURVEY.topics
@@ -264,7 +262,7 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
       if (!message) {
         setUseTTS(true);
         playTTS("Sorry, I couldn't load the question.");
-        setExamStarted(true); // ✅ 오류 안내 음성이라도 시작했으니 타이머 스타트
+        setRunning(true);
         return;
       }
 
@@ -273,7 +271,7 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
       if (cache[message]) {
         setAvatarUrl(cache[message]);
         setUseTTS(false);
-        // 실제 영상은 아래 useEffect('playing')에서 타이머 시작
+        // 실제 재생은 loaded 이후 replay()에서 시작 → 타이머도 그때 on
         return;
       }
 
@@ -294,47 +292,39 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
       // 3) 실패/상한 초과 → TTS 폴백
       setUseTTS(true);
       playTTS(message);
-      setExamStarted(true); // ✅ TTS 바로 시작
+      setRunning(true);
     } catch (error) {
       console.error("질문 생성 오류:", error);
       setQuestion("질문을 불러오는 중 오류가 발생했습니다.");
       setUseTTS(true);
       playTTS("Sorry, something went wrong.");
-      setExamStarted(true);
+      setRunning(true);
     } finally {
       setLoading(false);
     }
   };
 
-  // 아바타 URL이 생기면 로드 → 재생 → 실제 playing 시 타이머 시작
+  // 아바타 URL이 생기면 로드 후 자동재생 (practice 화면일 때만)
   useEffect(() => {
     if (ui !== "practice" || !avatarUrl) return;
     const v = avatarRef.current;
     if (!v) return;
-
-    const onLoaded = () => {
-      try { v.muted = false; v.currentTime = 0; v.play().catch(() => { }); } catch { }
-    };
-    const onPlaying = () => setExamStarted(true); // ✅ 실제 재생 시작 시 타이머 시작
-
-    v.addEventListener("loadeddata", onLoaded, { once: true });
-    v.addEventListener("playing", onPlaying, { once: true });
-    return () => {
-      v.removeEventListener("loadeddata", onLoaded);
-      v.removeEventListener("playing", onPlaying);
-    };
+    const handler = () => replay(); // 로드되면 재생 시도(playing 이벤트로 타이머 on)
+    v.addEventListener("loadeddata", handler, { once: true });
+    return () => v && v.removeEventListener("loadeddata", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [avatarUrl, ui]);
 
-  // 타이머 (실제 재생 시작 전까지 대기)
+  // 타이머 (실제 재생이 시작되었을 때만 동작)
   useEffect(() => {
-    if (ui !== "practice" || !examStarted) return;
+    if (ui !== "practice" || !running) return;
     if (timeLeft === 0) {
       setIsFinished(true);
       return;
     }
-    const t = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
+    const t = setInterval(() => setTimeLeft((s) => s - 1), 1000);
     return () => clearInterval(t);
-  }, [ui, examStarted, timeLeft]);
+  }, [timeLeft, running, ui]);
 
   // 모범답안
   const fetchBestAnswerFromGPT = async () => {
@@ -432,6 +422,7 @@ Question: ${question}
   const returnToPractice = async () => {
     await fetchQuestionFromGPT();
     setTimeLeft(60);
+    setRunning(false);
     setMemo("");
     setAudioURL("");
     setIsFinished(false);
