@@ -10,10 +10,6 @@ const API_BASE =
 const IMAGE_URL =
   process.env.REACT_APP_AVATAR_IMAGE_URL || `${window.location.origin}/avatar.png`;
 
-// iOS 탐지
-const IS_IOS =
-  /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
 /* =================== 로컬스토리지 키 =================== */
 const LS = {
