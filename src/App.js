@@ -11,7 +11,7 @@ const IMAGE_URL =
   `${window.location.origin}/avatar.png`;
 
 /* =================== 디바이스 판별 (모바일) =================== */
-// navigator 미정의(no-undef) 워닝 방지 가드
+// navigator 미정의(no-undef) 워닝 방지
 const IS_MOBILE =
   typeof navigator !== "undefined" &&
   /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -128,8 +128,7 @@ function App() {
   );
 
   /* =============== 연습 상태 =============== */
-  const [question, setQuestion] = useState(""); // 모바일 화면 표시용
-  const currentQuestionRef = useRef("");        // 웹/모바일 공용(화면 바인딩 금지)
+  const [question, setQuestion] = useState("");
   const [timeLeft, setTimeLeft] = useState(60);
   const [timerRunning, setTimerRunning] = useState(false);
 
@@ -147,6 +146,18 @@ function App() {
   const [useTTS, setUseTTS] = useState(false);
   const audioRef = useRef(null);
   const shouldAutoplayRef = useRef(false); // 사용자 제스처 직후 자동재생(웹만 의미 있음)
+
+  /* =============== 리뷰: 스크롤-투-탑 =============== */
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 200);
+    window.addEventListener("scroll", onScroll);
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  /* =============== 질문 다양성: 직전 질문 보관 =============== */
+  const prevQuestionRef = useRef("");
 
   /* =============== 서버 깨우기 =============== */
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -190,17 +201,19 @@ function App() {
     return () => clearInterval(id);
   }, [ui, timerRunning, timeLeft]);
 
-  /* =============== 질문 생성 프롬프트 =============== */
+  /* =============== 질문 생성 프롬프트 (다양성 강화) =============== */
   const buildPrompt = () => {
     const chosenLabels = SURVEY.topics
       .filter((t) => selectedTopics.includes(t.key))
       .map((t) => t.label);
-    const topicLine =
+
+    const topicInstruction =
       chosenLabels.length > 0
-        ? `Topic: choose ONE from this list → ${chosenLabels.join(" | ")}`
-        : `Topic: choose ONE at random from everyday topics (home, routine, hobbies, work/school, travel, etc.)`;
+        ? `Pick exactly ONE topic randomly from this list and stick to it → ${chosenLabels.join(" | ")}`
+        : `Pick exactly ONE topic randomly from everyday life (home, routine, hobbies, work/school, travel, etc.).`;
+
     const profileBits = [
-      `Level target: ${level}`,
+      `Target level: ${level}`,
       residence && `Residence: ${residence}`,
       role && `Role: ${role}`,
       recentCourse && `Recent course: ${recentCourse}`,
@@ -208,11 +221,19 @@ function App() {
       .filter(Boolean)
       .join(" | ");
 
+    const antiRepeat = prevQuestionRef.current
+      ? `Make it CLEARLY different from the previous question below by changing angle, verbs, tense, and required details.\nPrevious: "${prevQuestionRef.current}"`
+      : `Vary the angle so it doesn't sound generic.`;
+
     return `
 You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in English.
-- ${topicLine}
+
+- ${topicInstruction}
 - ${profileBits}
-- One concise question only (18–30 words). No numbering or explanations.
+- ${antiRepeat}
+- One concise question only (18–30 words).
+- Force the learner to give specific details (time/place/people/reasons) without saying "give details" explicitly.
+- No numbering, no instructions, no extra lines—return only the single question sentence.
 `.trim();
   };
 
@@ -244,17 +265,11 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
       const data = await res.json();
       const msg = (data?.answer || "").trim();
 
-      // 질문은 항상 ref에 저장(웹/모바일 공용, 화면에 직접 바인딩하지 않음)
-      currentQuestionRef.current = msg || "";
+      // 텍스트 상태는 갱신하되, 웹에선 오디오 준비가 끝날 때까지 화면에 숨김
+      setQuestion(msg || "질문을 불러오지 못했습니다.");
+      if (msg) prevQuestionRef.current = msg;
 
-      // 모바일만 화면에 질문 텍스트 표시, 웹은 숨김(플레이스홀더만)
-      if (IS_MOBILE) {
-        setQuestion(currentQuestionRef.current || "질문을 불러오지 못했습니다.");
-      } else {
-        setQuestion(""); // 웹: 텍스트 표시 금지(깜빡임 방지)
-      }
-
-      // ▶ 모바일: 음성 완전 비활성화 → 질문 뜨면 타이머 즉시 시작
+      // ▶ 모바일: 음성 완전 비활성화 → 질문 뜨면 바로 타이머 시작
       if (IS_MOBILE) {
         setTimeLeft(60);
         setTimerRunning(true);
@@ -283,14 +298,12 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
       }
     } catch (e) {
       console.error("질문 생성 오류:", e);
-      // 모바일은 화면 텍스트 + 타이머 시작, 웹은 TTS 사과 후 타이머
+      setQuestion("질문을 불러오는 중 오류가 발생했습니다.");
       if (IS_MOBILE) {
-        setQuestion("질문을 불러오는 중 오류가 발생했습니다.");
         setTimeLeft(60);
         setTimerRunning(true);
       } else {
         setUseTTS(true);
-        setQuestion(""); // 웹: 텍스트 숨김 유지
         playTTS("Sorry, something went wrong.", () => {
           setTimeLeft(60);
           setTimerRunning(true);
@@ -395,13 +408,11 @@ ${q}
 `.trim();
 
   const fetchBestAnswerFromGPT = async () => {
-    if (!currentQuestionRef.current.trim())
-      return alert("질문이 먼저 필요해요!");
-
+    if (!question.trim()) return alert("질문이 먼저 필요해요!");
     const res = await fetch(`${API_BASE}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: modelAnswerPrompt(currentQuestionRef.current) }),
+      body: JSON.stringify({ question: modelAnswerPrompt(question) }),
     });
     const data = await res.json();
     const answer = (data?.answer || "").trim();
@@ -420,7 +431,7 @@ ${q}
     if (!memo.trim()) return alert("📝 답변을 먼저 입력해주세요!");
     const saved = JSON.parse(localStorage.getItem(LS.history) || "[]");
     const newEntry = {
-      question: currentQuestionRef.current || question,
+      question,
       memo: memo.split("➡️ GPT 모범답안:")[0].trim(),
       gptAnswer: memo.includes("➡️ GPT 모범답안:")
         ? memo.split("➡️ GPT 모범답안:")[1].trim()
@@ -483,39 +494,71 @@ ${q}
             <div className="survey-grid">
               <div className="field">
                 <label>레벨</label>
-                <select value={level} onChange={(e) => { setLevel(e.target.value); localStorage.setItem(LS.level, e.target.value); }}>
+                <select
+                  value={level}
+                  onChange={(e) => {
+                    setLevel(e.target.value);
+                    localStorage.setItem(LS.level, e.target.value);
+                  }}
+                >
                   {["IM2–IH", "IL–IM1", "IH–AL"].map((l) => (
-                    <option key={l} value={l}>{l}</option>
+                    <option key={l} value={l}>
+                      {l}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div className="field">
                 <label>거주 형태</label>
-                <select value={residence} onChange={(e) => { setResidence(e.target.value); localStorage.setItem(LS.residence, e.target.value); }}>
+                <select
+                  value={residence}
+                  onChange={(e) => {
+                    setResidence(e.target.value);
+                    localStorage.setItem(LS.residence, e.target.value);
+                  }}
+                >
                   <option value="">(선택)</option>
                   {SURVEY.residenceOptions.map((x) => (
-                    <option key={x} value={x}>{x}</option>
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div className="field">
                 <label>역할</label>
-                <select value={role} onChange={(e) => { setRole(e.target.value); localStorage.setItem(LS.role, e.target.value); }}>
+                <select
+                  value={role}
+                  onChange={(e) => {
+                    setRole(e.target.value);
+                    localStorage.setItem(LS.role, e.target.value);
+                  }}
+                >
                   <option value="">(선택)</option>
                   {SURVEY.roles.map((x) => (
-                    <option key={x} value={x}>{x}</option>
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div className="field">
                 <label>최근 수강 이력</label>
-                <select value={recentCourse} onChange={(e) => { setRecentCourse(e.target.value); localStorage.setItem(LS.recentCourse, e.target.value); }}>
+                <select
+                  value={recentCourse}
+                  onChange={(e) => {
+                    setRecentCourse(e.target.value);
+                    localStorage.setItem(LS.recentCourse, e.target.value);
+                  }}
+                >
                   <option value="">(선택)</option>
                   {SURVEY.recentCourseOptions.map((x) => (
-                    <option key={x} value={x}>{x}</option>
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -549,7 +592,9 @@ ${q}
             </div>
 
             <div className="actions">
-              <button className="btn ghost" onClick={() => setUi("start")}>뒤로</button>
+              <button className="btn ghost" onClick={() => setUi("start")}>
+                뒤로
+              </button>
               <button
                 className="btn primary"
                 disabled={loading}
@@ -583,7 +628,15 @@ ${q}
             </p>
           ) : qAudioUrl ? (
             // 웹: 서버 MP3
-            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+            <div
+              style={{
+                marginTop: 16,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
               <audio
                 ref={audioRef}
                 src={qAudioUrl}
@@ -594,7 +647,11 @@ ${q}
                   setTimerRunning(true); // 질문 끝나고 시작
                 }}
               />
-              <img src={IMAGE_URL} alt="avatar" style={{ maxWidth: 320, borderRadius: 12 }} />
+              <img
+                src={IMAGE_URL}
+                alt="avatar"
+                style={{ maxWidth: 320, borderRadius: 12 }}
+              />
               <button
                 className="btn primary"
                 onClick={() => {
@@ -612,13 +669,25 @@ ${q}
             </div>
           ) : useTTS ? (
             // 웹: 브라우저 TTS 폴백
-            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-              <img src={IMAGE_URL} alt="avatar" style={{ maxWidth: 320, borderRadius: 12 }} />
+            <div
+              style={{
+                marginTop: 16,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <img
+                src={IMAGE_URL}
+                alt="avatar"
+                style={{ maxWidth: 320, borderRadius: 12 }}
+              />
               <button
                 className="btn primary"
                 onClick={() => {
                   window.speechSynthesis.cancel();
-                  playTTS(currentQuestionRef.current || "Sorry, I couldn't load the question.", () => {
+                  playTTS(question, () => {
                     setTimeLeft(60);
                     setTimerRunning(true);
                   });
@@ -628,7 +697,7 @@ ${q}
               </button>
             </div>
           ) : (
-            // 웹: 질문 텍스트는 보여주지 않고 항상 플레이스홀더
+            // 웹: 오디오/폴백 준비 전에는 텍스트를 숨기고 플레이스홀더만
             <p className="question-text">질문 준비 중…</p>
           )}
 
@@ -662,7 +731,8 @@ ${q}
             }}
             disabled={loading}
           >
-            <i className="fas fa-shuffle"></i> {loading ? "새 질문 로딩…" : "다른 질문 받기"}
+            <i className="fas fa-shuffle"></i>{" "}
+            {loading ? "새 질문 로딩…" : "다른 질문 받기"}
           </button>
 
           <div style={{ marginTop: 40 }}>
@@ -686,7 +756,9 @@ ${q}
               </button>
               <button
                 onClick={() => {
-                  const history = JSON.parse(localStorage.getItem(LS.history) || "[]");
+                  const history = JSON.parse(
+                    localStorage.getItem(LS.history) || "[]"
+                  );
                   setSavedHistory(history);
                   setUi("review");
                 }}
@@ -697,7 +769,12 @@ ${q}
           )}
 
           <div className="practice-actions">
-            <button type="button" className="btn-reset" onClick={() => setUi("survey")} title="설문 다시하기">
+            <button
+              type="button"
+              className="btn-reset"
+              onClick={() => setUi("survey")}
+              title="설문 다시하기"
+            >
               <i className="fas fa-arrow-left icon-nudge" aria-hidden="true"></i>
               설문 다시하기
             </button>
@@ -713,7 +790,10 @@ ${q}
       <>
         <div className="App started review-mode">
           <h2>
-            <i className="fas fa-book-journal-whills" style={{ color: "#4e47d1", marginRight: 10 }}></i>
+            <i
+              className="fas fa-book-journal-whills"
+              style={{ color: "#4e47d1", marginRight: 10 }}
+            ></i>
             저장된 질문과 답변
           </h2>
 
@@ -745,14 +825,27 @@ ${q}
             >
               <p>
                 <strong>
-                  <i className="fas fa-question-circle" style={{ marginRight: 8, color: "#6c63ff" }}></i>
+                  <i
+                    className="fas fa-question-circle"
+                    style={{ marginRight: 8, color: "#6c63ff" }}
+                  ></i>
                   Q{index + 1}. {item.question}
                 </strong>
               </p>
 
-              <button onClick={() => setOpenAnswerIndex(openAnswerIndex === index ? null : index)}>
-                <i className={`fas ${openAnswerIndex === index ? "fa-chevron-up" : "fa-comment-dots"}`}></i>
-                &nbsp;{openAnswerIndex === index ? "답변 숨기기" : "답변 보기"}
+              <button
+                onClick={() =>
+                  setOpenAnswerIndex(openAnswerIndex === index ? null : index)
+                }
+              >
+                <i
+                  className={`fas ${openAnswerIndex === index
+                    ? "fa-chevron-up"
+                    : "fa-comment-dots"
+                    }`}
+                ></i>
+                &nbsp;
+                {openAnswerIndex === index ? "답변 숨기기" : "답변 보기"}
               </button>
 
               {openAnswerIndex === index && (
@@ -771,6 +864,34 @@ ${q}
               )}
             </div>
           ))}
+
+          {showScrollTop && (
+            <button
+              onClick={scrollToTop}
+              title="맨 위로"
+              style={{
+                position: "fixed",
+                bottom: "30px",
+                left: "50%",
+                transform: "translateX(-50%)",
+                backgroundColor: "#4e47d1",
+                color: "white",
+                border: "none",
+                borderRadius: "50%",
+                width: 50,
+                height: 50,
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                fontSize: 22,
+                cursor: "pointer",
+                boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
+                zIndex: 1000,
+              }}
+            >
+              <i className="fas fa-arrow-up"></i>
+            </button>
+          )}
         </div>
         <LoadingOverlay />
       </>
