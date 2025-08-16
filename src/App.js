@@ -55,8 +55,8 @@ const SURVEY = {
   ],
 };
 
-/* =============== 브라우저 TTS(최후 폴백) =============== */
-function playTTS(text) {
+/* =============== 브라우저 TTS(최후 폴백, onEnd 콜백 지원) =============== */
+function playTTS(text, onEnd) {
   try {
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
@@ -67,22 +67,22 @@ function playTTS(text) {
         (v) => /en-?US/i.test(v.lang) && /female|Jenny|Google US English/i.test(v.name)
       ) || voices.find((v) => /en-?US/i.test(v.lang)) || voices[0];
     if (preferred) u.voice = preferred;
+    if (onEnd) u.onend = onEnd;
     window.speechSynthesis.speak(u);
   } catch (e) {
     console.warn("TTS unavailable:", e?.message);
   }
 }
 
-/* =============== 서버 TTS 호출(여성 톤 요청, 실패 시 null) =============== */
+/* =============== 서버 TTS 호출(여성 톤 verse → 실패 시 alloy) =============== */
 async function fetchQuestionAudio(question) {
+  const cacheKey = "opic:ttsCache:v2";
   try {
-    const cacheKey = "opic:ttsCache:v2";
     const cache = JSON.parse(localStorage.getItem(cacheKey) || "{}");
     if (cache[question]) return cache[question];
 
-    // OpenAI TTS 직접 호출 (여성 톤: verse 요청)
-    const tryOnce = async (payload) => {
-      const r = await fetch(`${API_BASE}/tts`, {
+    const hit = async (path, payload) => {
+      const r = await fetch(`${API_BASE}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -92,8 +92,11 @@ async function fetchQuestionAudio(question) {
       return j?.audioUrl || null;
     };
 
-    let audioUrl = await tryOnce({ text: question, voice: "verse" });
-    if (!audioUrl) audioUrl = await tryOnce({ text: question }); // 백업(alloy)
+    let audioUrl =
+      (await hit("/api/tts", { text: question, voice: "verse" })) ||
+      (await hit("/tts", { text: question, voice: "verse" })) ||
+      (await hit("/api/tts", { text: question })) ||
+      (await hit("/tts", { text: question }));
 
     if (audioUrl) {
       localStorage.setItem(cacheKey, JSON.stringify({ ...cache, [question]: audioUrl }));
@@ -105,7 +108,7 @@ async function fetchQuestionAudio(question) {
   }
 }
 
-function App() {
+export default function App() {
   /* =============== UI/공통 =============== */
   const [ui, setUi] = useState("start"); // start | survey | practice | review
   const [serverReady, setServerReady] = useState(false);
@@ -124,7 +127,6 @@ function App() {
   const [question, setQuestion] = useState("");
   const [timeLeft, setTimeLeft] = useState(60);
   const [timerRunning, setTimerRunning] = useState(false);
-  const [hasStartedAudio, setHasStartedAudio] = useState(false);
 
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [recMime, setRecMime] = useState("audio/webm");
@@ -202,7 +204,6 @@ function App() {
   /* =============== 질문 생성 + 오디오 준비 =============== */
   const fetchQuestionFromGPT = async () => {
     try {
-      // 재생/합성 중단
       window.speechSynthesis.cancel();
       if (qAudioRef.current) {
         qAudioRef.current.pause();
@@ -215,7 +216,6 @@ function App() {
       // 초기화
       setTimeLeft(60);
       setTimerRunning(false);
-      setHasStartedAudio(false);
       setIsFinished(false);
       setMemo("");
       setAudioURL("");
@@ -257,55 +257,47 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
 
       if (!msg) {
         setUseTTS(true);
-        playTTS("Sorry, I couldn't load the question.");
-        if (!hasStartedAudio) {
-          setHasStartedAudio(true);
+        playTTS("Sorry, I couldn't load the question.", () => {
           setTimeLeft(60);
           setTimerRunning(true);
-        }
+        });
         return;
       }
 
-      // 서버 TTS(모바일 품질/일관성) 우선
+      // 서버 TTS(여성 톤 verse) 우선
       const audioUrl = await fetchQuestionAudio(msg);
       if (audioUrl) {
         setQAudioUrl(audioUrl);
-        // 실제 재생은 useEffect(qAudioUrl)에서 안전하게 처리
       } else {
-        // 실패 → 브라우저 TTS 폴백
+        // 실패 → 브라우저 TTS 폴백 (끝난 뒤 타이머 시작)
         setUseTTS(true);
-        playTTS(msg);
-        if (!hasStartedAudio) {
-          setHasStartedAudio(true);
+        playTTS(msg, () => {
           setTimeLeft(60);
           setTimerRunning(true);
-        }
+        });
       }
     } catch (e) {
       console.error("질문 생성 오류:", e);
       setQuestion("질문을 불러오는 중 오류가 발생했습니다.");
       setUseTTS(true);
-      playTTS("Sorry, something went wrong.");
-      if (!hasStartedAudio) {
-        setHasStartedAudio(true);
+      playTTS("Sorry, something went wrong.", () => {
         setTimeLeft(60);
         setTimerRunning(true);
-      }
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  // 오디오 URL이 준비되고 practice 화면일 때, 사용자 제스처 직후라면 안전하게 자동재생
+  // 오디오 URL이 준비되고 practice 화면이며 사용자 제스처 직후라면 자동재생
   useEffect(() => {
     if (ui !== "practice" || !qAudioUrl) return;
     if (!shouldAutoplayRef.current) return;
     const el = qAudioRef.current;
     if (!el) return;
     el.currentTime = 0;
-    el.play().catch(() => { /* 차단되면 버튼으로 재생 */ });
-    // 한 번만 자동재생
-    shouldAutoplayRef.current = false;
+    el.play().catch(() => { });
+    shouldAutoplayRef.current = false; // 한 번만
   }, [qAudioUrl, ui]);
 
   /* =============== 녹음 (iOS 호환 MIME 선택) =============== */
@@ -319,10 +311,7 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
       setRecMime(preferredMime);
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
+        audio: { echoCancellation: true, noiseSuppression: true },
       });
 
       const recorder = new MediaRecorder(stream, { mimeType: preferredMime });
@@ -345,24 +334,27 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
       audioBlob,
       recMime === "audio/mp4" ? "recording.m4a" : "recording.webm"
     );
-    const res = await fetch(`${API_BASE}/stt`, {
-      method: "POST",
-      body: formData,
-    });
-    if (!res.ok) {
-      const msg = await res.text().catch(() => "");
-      throw new Error(`/stt ${res.status} ${msg}`);
+
+    const tryHit = async (path) => {
+      const r = await fetch(`${API_BASE}${path}`, { method: "POST", body: formData });
+      if (!r.ok) {
+        const t = await r.text().catch(() => "");
+        throw new Error(`${path} ${r.status} ${t || ""}`.trim());
+      }
+      const j = await r.json();
+      return j.text || "";
+    };
+
+    try {
+      return await tryHit("/api/stt");
+    } catch {
+      return await tryHit("/stt");
     }
-    const data = await res.json();
-    return data.text || "";
   };
 
   const stopRecording = () => {
     if (!mediaRecorder) return;
     try {
-      mediaRecorder.stop();
-      setIsRecording(false);
-      setIsFinished(true);
       mediaRecorder.onstop = async () => {
         const type = recMime || "audio/webm";
         const blob = new Blob(mediaRecorder.chunks, { type });
@@ -375,6 +367,9 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
           console.error("STT 오류:", e);
         }
       };
+      mediaRecorder.stop();
+      setIsRecording(false);
+      setIsFinished(true);
     } catch (e) {
       console.error("녹음 종료 오류:", e);
     }
@@ -402,7 +397,7 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
     setUi("review");
   };
   const returnToPractice = async () => {
-    shouldAutoplayRef.current = true;        // 복귀 후 새 질문도 자동재생
+    shouldAutoplayRef.current = true;
     setUi("practice");
     await fetchQuestionFromGPT();
     setIsFinished(false);
@@ -515,7 +510,7 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
                   return (
                     <button
                       key={t.key}
-                      onClick={async () => toggleTopic(t.key)}
+                      onClick={() => toggleTopic(t.key)}
                       className={`chip ${active ? "active" : ""}`}
                     >
                       {t.label}
@@ -532,7 +527,7 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
                 className="btn primary"
                 disabled={loading}
                 onClick={async () => {
-                  // 사용자 제스처 컨텍스트 유지: 화면 먼저 전환 → 질문/오디오 생성
+                  // 사용자 제스처: 화면 전환 먼저 → 질문 생성 + 오디오 자동재생
                   shouldAutoplayRef.current = true;
                   setUi("practice");
                   await fetchQuestionFromGPT();
@@ -563,12 +558,10 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
                 src={qAudioUrl}
                 preload="auto"
                 playsInline
-                onPlay={() => {
-                  if (!hasStartedAudio) {
-                    setHasStartedAudio(true);
-                    setTimeLeft(60);
-                    setTimerRunning(true);
-                  }
+                // 질문 음성이 **끝났을 때** 타이머 시작
+                onEnded={() => {
+                  setTimeLeft(60);
+                  setTimerRunning(true);
                 }}
               />
               <img src={IMAGE_URL} alt="avatar" style={{ maxWidth: 320, borderRadius: 12 }} />
@@ -594,12 +587,11 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
                 className="btn primary"
                 onClick={() => {
                   window.speechSynthesis.cancel();
-                  playTTS(question);
-                  if (!hasStartedAudio) {
-                    setHasStartedAudio(true);
+                  // 폴백 TTS 끝나면 타이머 시작
+                  playTTS(question, () => {
                     setTimeLeft(60);
                     setTimerRunning(true);
-                  }
+                  });
                 }}
               >
                 ▶ 다시 듣기
@@ -634,7 +626,7 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
                   qAudioRef.current.currentTime = 0;
                 }
               } catch { }
-              shouldAutoplayRef.current = true; // 다른 질문도 자동재생
+              shouldAutoplayRef.current = true; // 새 질문도 자동재생
               await fetchQuestionFromGPT();
             }}
             disabled={loading}
@@ -823,5 +815,3 @@ Question: ${question}
 
   return null;
 }
-
-export default App;
