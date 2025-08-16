@@ -28,7 +28,7 @@ function App() {
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recMime, setRecMime] = useState("audio/webm");
-  const [audioURL, setAudioURL] = useState("");
+  const [, setAudioURL] = useState("");
   const [memo, setMemo] = useState("");
   const [isFinished, setIsFinished] = useState(false);
   const [savedHistory, setSavedHistory] = useState([]);
