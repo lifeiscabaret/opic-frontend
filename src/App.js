@@ -77,17 +77,17 @@ function playTTS(text) {
 /* =============== 서버 TTS 호출(고음질 MP3) =============== */
 async function fetchQuestionAudio(question) {
   try {
-    const cacheKey = "opic:ttsCache";
+    const cacheKey = "opic:ttsCache:v1";
     const cache = JSON.parse(localStorage.getItem(cacheKey) || "{}");
     if (cache[question]) return cache[question];
 
-    const res = await fetch(`${API_BASE}/tts`, {
+    const res = await fetch(`${API_BASE}/tts-eleven`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: question, voice: "en-US-JennyNeural" }),
+      body: JSON.stringify({ text: question, voice: "Rachel" }),
     });
     if (!res.ok) {
-      console.error("[/tts error]", res.status, await res.text());
+      console.error("[/tts-eleven error]", res.status, await res.text());
       return null;
     }
     const { audioUrl } = await res.json();
@@ -324,15 +324,22 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
 
   const transcribeAudio = async (audioBlob) => {
     const formData = new FormData();
-    formData.append("file", audioBlob, recMime === "audio/mp4" ? "recording.m4a" : "recording.webm");
-    formData.append("model", "whisper-1");
-    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    formData.append(
+      "file",
+      audioBlob,
+      recMime === "audio/mp4" ? "recording.m4a" : "recording.webm"
+    );
+    // 필요한 옵션 있으면 같이 전송 (예: language, temperature 등)
+    const res = await fetch(`${API_BASE}/stt`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${process.env.REACT_APP_OPENAI_API_KEY}` },
       body: formData,
     });
+    if (!res.ok) {
+      const msg = await res.text().catch(() => "");
+      throw new Error(`/stt ${res.status} ${msg}`);
+    }
     const data = await res.json();
-    return data.text;
+    return data.text || "";
   };
 
   const stopRecording = () => {
