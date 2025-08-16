@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+// src/App.js
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 
@@ -8,6 +9,12 @@ const API_BASE =
 const IMAGE_URL =
   process.env.REACT_APP_AVATAR_IMAGE_URL ||
   `${window.location.origin}/avatar.png`;
+
+/* =================== 디바이스 판별 (모바일) =================== */
+// navigator 미정의(no-undef) 워닝 방지 가드
+const IS_MOBILE =
+  typeof navigator !== "undefined" &&
+  /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
 /* =================== 로컬스토리지 키 =================== */
 const LS = {
@@ -54,9 +61,10 @@ const SURVEY = {
   ],
 };
 
-/* =============== 브라우저 TTS 폴백(onEnd 지원) =============== */
+/* =============== 브라우저 TTS 폴백(onEnd 지원, 모바일에선 미사용) =============== */
 function playTTS(text, onEnd) {
   try {
+    if (IS_MOBILE) return; // 모바일은 음성 완전 비활성화
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = "en-US";
@@ -75,8 +83,9 @@ function playTTS(text, onEnd) {
   }
 }
 
-/* =============== 서버 TTS(여성 verse 우선) =============== */
+/* =============== 서버 TTS(여성 verse 우선, 모바일에선 미사용) =============== */
 async function fetchQuestionAudio(question) {
+  if (IS_MOBILE) return null; // 모바일은 음성 완전 비활성화
   try {
     const cacheKey = "opic:ttsCache:v2";
     const cache = JSON.parse(localStorage.getItem(cacheKey) || "{}");
@@ -119,7 +128,8 @@ function App() {
   );
 
   /* =============== 연습 상태 =============== */
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState(""); // 모바일 화면 표시용
+  const currentQuestionRef = useRef("");        // 웹/모바일 공용(화면 바인딩 금지)
   const [timeLeft, setTimeLeft] = useState(60);
   const [timerRunning, setTimerRunning] = useState(false);
 
@@ -132,11 +142,11 @@ function App() {
   const [savedHistory, setSavedHistory] = useState([]);
   const [openAnswerIndex, setOpenAnswerIndex] = useState(null);
 
-  /* =============== 질문 오디오 =============== */
+  /* =============== 질문 오디오(웹 전용) =============== */
   const [qAudioUrl, setQAudioUrl] = useState("");
   const [useTTS, setUseTTS] = useState(false);
   const audioRef = useRef(null);
-  const shouldAutoplayRef = useRef(false); // 사용자 제스처 직후 자동재생
+  const shouldAutoplayRef = useRef(false); // 사용자 제스처 직후 자동재생(웹만 의미 있음)
 
   /* =============== 서버 깨우기 =============== */
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -206,7 +216,7 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
 `.trim();
   };
 
-  /* =============== 질문 생성 + 오디오 준비 =============== */
+  /* =============== 질문 생성 + (웹: 오디오) 준비 =============== */
   const fetchQuestionFromGPT = async () => {
     try {
       window.speechSynthesis.cancel();
@@ -233,8 +243,25 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
       });
       const data = await res.json();
       const msg = (data?.answer || "").trim();
-      setQuestion(msg || "질문을 불러오지 못했습니다.");
 
+      // 질문은 항상 ref에 저장(웹/모바일 공용, 화면에 직접 바인딩하지 않음)
+      currentQuestionRef.current = msg || "";
+
+      // 모바일만 화면에 질문 텍스트 표시, 웹은 숨김(플레이스홀더만)
+      if (IS_MOBILE) {
+        setQuestion(currentQuestionRef.current || "질문을 불러오지 못했습니다.");
+      } else {
+        setQuestion(""); // 웹: 텍스트 표시 금지(깜빡임 방지)
+      }
+
+      // ▶ 모바일: 음성 완전 비활성화 → 질문 뜨면 타이머 즉시 시작
+      if (IS_MOBILE) {
+        setTimeLeft(60);
+        setTimerRunning(true);
+        return;
+      }
+
+      // ▶ 웹: 서버 TTS(verse) → 실패 시 브라우저 TTS
       if (!msg) {
         setUseTTS(true);
         playTTS("Sorry, I couldn't load the question.", () => {
@@ -244,9 +271,9 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
         return;
       }
 
-      const url = await fetchQuestionAudio(msg); // OpenAI TTS (verse)
+      const url = await fetchQuestionAudio(msg);
       if (url) {
-        setQAudioUrl(url); // 재생/타이머는 아래에서
+        setQAudioUrl(url);
       } else {
         setUseTTS(true);
         playTTS(msg, () => {
@@ -256,19 +283,27 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
       }
     } catch (e) {
       console.error("질문 생성 오류:", e);
-      setQuestion("질문을 불러오는 중 오류가 발생했습니다.");
-      setUseTTS(true);
-      playTTS("Sorry, something went wrong.", () => {
+      // 모바일은 화면 텍스트 + 타이머 시작, 웹은 TTS 사과 후 타이머
+      if (IS_MOBILE) {
+        setQuestion("질문을 불러오는 중 오류가 발생했습니다.");
         setTimeLeft(60);
         setTimerRunning(true);
-      });
+      } else {
+        setUseTTS(true);
+        setQuestion(""); // 웹: 텍스트 숨김 유지
+        playTTS("Sorry, something went wrong.", () => {
+          setTimeLeft(60);
+          setTimerRunning(true);
+        });
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // 오디오 URL 준비 + 사용자 제스처 직후 자동재생
+  // (웹 전용) 오디오 URL 준비 + 사용자 제스처 직후 자동재생
   useEffect(() => {
+    if (IS_MOBILE) return;
     if (ui !== "practice" || !qAudioUrl) return;
     if (!shouldAutoplayRef.current) return;
     const el = audioRef.current;
@@ -328,7 +363,7 @@ You are an OPIC examiner. Generate EXACTLY ONE OPIC-style interview question in 
         const type = recMime || "audio/webm";
         const blob = new Blob(mediaRecorder.chunks, { type });
         const url = URL.createObjectURL(blob);
-        setAudioURL(url); // 미리듣기 표시
+        setAudioURL(url);
         try {
           const transcript = await transcribeAudio(blob);
           setMemo((prev) => prev + "\n" + (transcript || ""));
@@ -360,11 +395,13 @@ ${q}
 `.trim();
 
   const fetchBestAnswerFromGPT = async () => {
-    if (!question.trim()) return alert("질문이 먼저 필요해요!");
+    if (!currentQuestionRef.current.trim())
+      return alert("질문이 먼저 필요해요!");
+
     const res = await fetch(`${API_BASE}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: modelAnswerPrompt(question) }),
+      body: JSON.stringify({ question: modelAnswerPrompt(currentQuestionRef.current) }),
     });
     const data = await res.json();
     const answer = (data?.answer || "").trim();
@@ -383,7 +420,7 @@ ${q}
     if (!memo.trim()) return alert("📝 답변을 먼저 입력해주세요!");
     const saved = JSON.parse(localStorage.getItem(LS.history) || "[]");
     const newEntry = {
-      question,
+      question: currentQuestionRef.current || question,
       memo: memo.split("➡️ GPT 모범답안:")[0].trim(),
       gptAnswer: memo.includes("➡️ GPT 모범답안:")
         ? memo.split("➡️ GPT 모범답안:")[1].trim()
@@ -391,12 +428,6 @@ ${q}
     };
     localStorage.setItem(LS.history, JSON.stringify([...saved, newEntry]));
     alert("저장되었습니다!");
-  };
-
-  const toggleSavedView = () => {
-    const history = JSON.parse(localStorage.getItem(LS.history) || "[]");
-    setSavedHistory(history);
-    setUi("review");
   };
 
   /* =============== 로딩 오버레이 =============== */
@@ -523,8 +554,7 @@ ${q}
                 className="btn primary"
                 disabled={loading}
                 onClick={async () => {
-                  // 사용자 제스처 컨텍스트 유지: 화면 먼저 전환 → 질문/오디오 생성
-                  shouldAutoplayRef.current = true;
+                  shouldAutoplayRef.current = true; // (웹) 자동재생 시도용
                   setUi("practice");
                   await fetchQuestionFromGPT();
                 }}
@@ -546,8 +576,13 @@ ${q}
           <h2>오늘의 질문</h2>
           <h3>남은 시간: {timeLeft}초</h3>
 
-          {/* 질문 오디오는 서버 MP3 우선, 실패 시 브라우저 TTS */}
-          {qAudioUrl ? (
+          {/* 모바일: 텍스트만 표시 (음성 완전 차단) */}
+          {IS_MOBILE ? (
+            <p className="question-text" style={{ marginTop: 16 }}>
+              {question || "질문 준비 중…"}
+            </p>
+          ) : qAudioUrl ? (
+            // 웹: 서버 MP3
             <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
               <audio
                 ref={audioRef}
@@ -556,7 +591,7 @@ ${q}
                 playsInline
                 onEnded={() => {
                   setTimeLeft(60);
-                  setTimerRunning(true); // 질문 끝난 후 타이머 시작
+                  setTimerRunning(true); // 질문 끝나고 시작
                 }}
               />
               <img src={IMAGE_URL} alt="avatar" style={{ maxWidth: 320, borderRadius: 12 }} />
@@ -576,13 +611,14 @@ ${q}
               </button>
             </div>
           ) : useTTS ? (
+            // 웹: 브라우저 TTS 폴백
             <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
               <img src={IMAGE_URL} alt="avatar" style={{ maxWidth: 320, borderRadius: 12 }} />
               <button
                 className="btn primary"
                 onClick={() => {
                   window.speechSynthesis.cancel();
-                  playTTS(question, () => {
+                  playTTS(currentQuestionRef.current || "Sorry, I couldn't load the question.", () => {
                     setTimeLeft(60);
                     setTimerRunning(true);
                   });
@@ -592,7 +628,8 @@ ${q}
               </button>
             </div>
           ) : (
-            <p className="question-text">{question || "질문 준비 중…"}</p>
+            // 웹: 질문 텍스트는 보여주지 않고 항상 플레이스홀더
+            <p className="question-text">질문 준비 중…</p>
           )}
 
           {!isRecording ? (
@@ -620,7 +657,7 @@ ${q}
                   audioRef.current.currentTime = 0;
                 }
               } catch { }
-              shouldAutoplayRef.current = true;
+              shouldAutoplayRef.current = true; // (웹) 새 질문 자동재생 시도
               await fetchQuestionFromGPT();
             }}
             disabled={loading}
@@ -647,7 +684,13 @@ ${q}
               <button onClick={handleSave}>
                 <i className="fas fa-floppy-disk"></i> 질문 + 메모 저장
               </button>
-              <button onClick={toggleSavedView}>
+              <button
+                onClick={() => {
+                  const history = JSON.parse(localStorage.getItem(LS.history) || "[]");
+                  setSavedHistory(history);
+                  setUi("review");
+                }}
+              >
                 <i className="fas fa-folder-open"></i> 저장된 질문/답변 보기
               </button>
             </>
@@ -676,7 +719,7 @@ ${q}
 
           <button
             onClick={async () => {
-              shouldAutoplayRef.current = true;
+              shouldAutoplayRef.current = true; // (웹) 자동재생 시도
               setUi("practice");
               await fetchQuestionFromGPT();
               setIsFinished(false);
