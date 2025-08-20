@@ -1,4 +1,4 @@
-# 🎤 OPIC AI Trainer
+# 🎤 OPIC Master
 
 AI를 활용해 OPIC(Oral Proficiency Interview) 시험 대비를 도와주는 웹 애플리케이션입니다.
 실제 시험과 유사한 환경에서 아바타가 음성으로 질문을 제시하고, 사용자는 음성 또는 텍스트로 답변할 수 있습니다.
@@ -7,7 +7,7 @@ AI를 활용해 OPIC(Oral Proficiency Interview) 시험 대비를 도와주는 �
 ---
 
 ## 🚀 배포 링크
-🔗 [OPIC AI Trainer 바로가기](https://illustrious-hummingbird-0af3bb.netlify.app/)
+🔗 [OPIC Master 바로가기](https://illustrious-hummingbird-0af3bb.netlify.app/)
 
 ---
 
