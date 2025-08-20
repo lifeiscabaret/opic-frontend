@@ -66,33 +66,14 @@ AI를 활용해 OPIC(Oral Proficiency Interview) 시험 대비를 도와주는 �
 
 ```bash
 OPIC-AI-TRAINER/
-├─ backend/
-│  ├─ node_modules/
-│  ├─ .env                  # 환경 변수 (API 키 등)
+├─ backend/                      # Express 서버 (OpenAI 연동)
+│  ├─ .env                       # 환경 변수 (git에 올라가지 않음)
 │  ├─ .gitignore
-│  ├─ index.js
-│  ├─ server.js             # Express 서버 (OpenAI API 연동)
+│  ├─ server.js
 │  ├─ package.json
 │  └─ package-lock.json
 │
-├─ build/                   # 프론트엔드 빌드 결과
-│  ├─ static/
-│  ├─ asset-manifest.json
-│  ├─ favicon.ico
-│  ├─ index.html
-│  ├─ manifest.json
-│  └─ robots.txt
-│
-├─ frontend/
-│  ├─ assets/               # README 캡처 이미지
-│  │  ├─ main.png
-│  │  ├─ opic survey.jpg
-│  │  ├─ question.jpg
-│  │  ├─ answer1.png
-│  │  ├─ answer2.png
-│  │  ├─ mobile.jpeg
-│  │  └─ record.jpg
-│  │
+├─ frontend/                     # React 앱
 │  ├─ public/
 │  │  ├─ _redirects
 │  │  ├─ avatar.png
@@ -102,21 +83,26 @@ OPIC-AI-TRAINER/
 │  │  └─ robots.txt
 │  │
 │  ├─ src/
-│  │  ├─ api.js             # API 요청 유틸
-│  │  ├─ App.js             # 메인 App 컴포넌트
+│  │  ├─ api.js                  # API 요청 유틸
+│  │  ├─ App.js                  # 메인 App 컴포넌트
 │  │  ├─ App.css
-│  │  ├─ App.test.js
 │  │  ├─ index.js
-│  │  ├─ index.css
-│  │  ├─ logo.svg
-│  │  ├─ reportWebVitals.js
-│  │  └─ setupTests.js
+│  │  └─ index.css
 │  │
-│  ├─ .env
+│  ├─ assets/                    # README에 쓰는 캡처 이미지
+│  │  ├─ main.png
+│  │  ├─ opic survey.jpg
+│  │  ├─ question.jpg
+│  │  ├─ answer1.png
+│  │  ├─ answer2.png
+│  │  ├─ mobile.jpeg
+│  │  └─ record.jpg
+│  │
 │  ├─ .gitignore
 │  ├─ package.json
 │  └─ package-lock.json
 │
+├─ .gitignore                    # 루트 ignore (node_modules, build 등)
 └─ README.md
 
 ## 💡 향후 개선 계획
