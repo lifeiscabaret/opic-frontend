@@ -13,7 +13,7 @@ AI를 활용해 OPIC(Oral Proficiency Interview) 시험 대비를 도와주는 �
 
 ## 📌 주요 기능
 - **OPIC Survey** – 실제 시험과 유사한 Survey 진행 후, Survey 결과 기반 질문 제공  
-- **아바타 질문 시스템** – ElevenLabs API를 활용해 아바타가 음성으로 질문 제시  
+- **아바타 질문 시스템** – OpenAI TTS API를 활용해 아바타가 음성으로 질문 제시  
 - **음성 녹음 및 재생** – 브라우저에서 직접 답변 녹음 및 재생 가능  
 - **모바일 최적화** – 모바일 환경에서는 음질 문제를 보완하기 위해 텍스트 답변 모드로 전환  
 - **답변 메모 & 저장** – 말한 내용을 메모하고, 브라우저 `localStorage`에 저장하여 재확인 가능  
@@ -54,7 +54,7 @@ AI를 활용해 OPIC(Oral Proficiency Interview) 시험 대비를 도와주는 �
 ### Backend
 - Node.js (Express)
 - OpenAI API (질문 생성 & 모범 답안 생성)
-- ElevenLabs API (음성 합성)
+- OpenAI API (TTS: 음성 합성, STT: 음성 → 텍스트 변환)
 
 ### 배포
 - Frontend: Netlify
@@ -71,7 +71,7 @@ OPIC-AI-TRAINER/
 │  ├─ .env                  # 환경 변수 (API 키 등)
 │  ├─ .gitignore
 │  ├─ index.js
-│  ├─ server.js             # Express 서버 (OpenAI & ElevenLabs 연동)
+│  ├─ server.js             # Express 서버 (OpenAI API 연동)
 │  ├─ package.json
 │  └─ package-lock.json
 │
