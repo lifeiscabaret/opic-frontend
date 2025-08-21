@@ -94,7 +94,7 @@ async function fetchQuestionAudio(question) {
     const r = await fetch(`${API_BASE}/tts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: question, voice: "verse" }),
+      body: JSON.stringify({ text: question, voice: "sage" }),
     });
     if (!r.ok) return null;
     const j = await r.json();
