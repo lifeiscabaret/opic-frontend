@@ -94,9 +94,9 @@ function App() {
   // 속도개선
   const videoRef = useRef(null);
   const pcRef = useRef(null);
-  const [sessionId, setSessionId] = useState("");        // 스트리밍 세션 재사용
-  const [videoReady, setVideoReady] = useState(false);   // 프리뷰 표시 제어
-  const guardRef = useRef(null); // 레이스 가드(1.2s 타임아웃)
+  const [sessionId, setSessionId] = useState("");
+  const [videoReady, setVideoReady] = useState(false);
+  const guardRef = useRef(null);
 
   // 질문 배치 캐시
   const [questionBank, setQuestionBank] = useState([]);
@@ -138,8 +138,9 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sdp: offer.sdp }),
       });
+
       const j = await r.json();
-      if (!j?.answer || !j?.session_id) throw new Error("no answer/session_id");
+      if (!r.ok || !j?.answer || !j?.session_id) throw new Error("no answer/session_id");
       await pc.setRemoteDescription({ type: "answer", sdp: j.answer });
       setSessionId(j.session_id);
       return j.session_id;
@@ -190,11 +191,18 @@ function App() {
     return () => { mounted = false; };
   }, []);
 
+  /* ── 로딩 관리 ───────────────────────── */
+  useEffect(() => {
+    if (videoReady) {
+      setLoading(false);
+    }
+  }, [videoReady]);
+
   //  서버 준비되면 start/survey에서도 스트리밍 세션 미리 붙임
   useEffect(() => {
     if (!serverReady) return;
     if (ui === "start" || ui === "survey") {
-      initStreamingOnce(); // 비가청, 권한 불필요
+      initStreamingOnce();
     }
   }, [serverReady, ui, initStreamingOnce]);
 
@@ -230,7 +238,6 @@ Generate 20 OPIC-style interview questions in English.
       let arr = [];
       try { arr = JSON.parse(data?.answer || "[]"); } catch { arr = []; }
 
-      // 폴백 적용
       if (!Array.isArray(arr) || arr.length === 0) {
         arr = FALLBACK_QUESTIONS;
       }
@@ -245,14 +252,21 @@ Generate 20 OPIC-style interview questions in English.
     await fetchQuestionBatch();
   };
 
-  const getNextQuestionFromBank = async () => {
+  const getNextQuestionFromBank = () => new Promise(async (resolve) => {
     await ensureQuestionBank();
-    if (questionBank.length === 0) return "";
-    const [q, ...rest] = questionBank;
-    setQuestionBank(rest);
-    if (rest.length < 5 && !bankLoading) fetchQuestionBatch();
-    return q;
-  };
+    setQuestionBank(currentBank => {
+      if (currentBank.length === 0) {
+        resolve("");
+        return [];
+      }
+      const [q, ...rest] = currentBank;
+      if (rest.length < 5 && !bankLoading) {
+        fetchQuestionBatch();
+      }
+      resolve(q);
+      return rest;
+    });
+  });
 
   /* ── mp4 렌더 → 스왑(세션은 유지) ─────── */
   const swapToMp4WhenReady = async (text) => {
@@ -263,14 +277,13 @@ Generate 20 OPIC-style interview questions in English.
         body: JSON.stringify({ text }),
       });
       const data = await res.json();
-      if (data?.videoUrl) { // "ok"와 "url" 대신 "videoUrl" 확인
+      if (data?.videoUrl) {
         const v = videoRef.current;
         if (v) {
           v.srcObject = null;
           v.src = data.videoUrl;
           v.onloadeddata = () => setVideoReady(true);
           v.onended = () => { setTimeLeft(60); setTimerRunning(true); };
-          /* ★ 레이스 가드 해제: mp4가 승자면 가드 중단 */
           if (guardRef.current) { clearTimeout(guardRef.current); guardRef.current = null; }
           v.play().catch(() => { });
         }
@@ -284,11 +297,8 @@ Generate 20 OPIC-style interview questions in English.
     }
   };
 
-  // 여러 개 조기 프리페치
-
   const queuePrefetch = async (count = 3) => {
     for (let i = 0; i < count; i++) {
-      // questionBank가 바닥나면 먼저 채움
       if (questionBank.length < 1 && !bankLoading) {
         await ensureQuestionBank();
       }
@@ -308,7 +318,7 @@ Generate 20 OPIC-style interview questions in English.
         body: JSON.stringify({ text: nq }),
       });
       const data = await res.json();
-      if (data?.videoUrl) { // "ok"와 "url" 대신 "videoUrl" 확인
+      if (data?.videoUrl) {
         setNextQuestion(nq);
         setNextAvatarUrl(data.videoUrl);
       } else {
@@ -322,8 +332,7 @@ Generate 20 OPIC-style interview questions in English.
 
   /* ── 한 번 실행(현재 질문) ─────────────── */
   const runOne = async () => {
-    setLoading(true);
-    setVideoReady(false);
+    // setVideoReady(false);
     setTimeLeft(60);
     setTimerRunning(false);
     setIsFinished(false);
@@ -332,7 +341,6 @@ Generate 20 OPIC-style interview questions in English.
     if (guardRef.current) { clearTimeout(guardRef.current); guardRef.current = null; }
 
     try {
-      // (1) 질문 확보: 프리페치 > 캐시
       let q = nextQuestion;
       let preUrl = nextAvatarUrl;
       if (q) {
@@ -342,15 +350,12 @@ Generate 20 OPIC-style interview questions in English.
         q = await getNextQuestionFromBank();
       }
       if (!q) { await ensureQuestionBank(); q = await getNextQuestionFromBank(); }
-      if (!q) { setLoading(false); return; }
+      if (!q) { return; }
       setQuestion(q);
 
-      // (2) 스트리밍 세션 준비(최초 1회) → 즉시 말하기
       const sid = await initStreamingOnce();
       if (sid) {
         sendTalk(q);
-        /* ★ 1.2초 레이스 가드
-           WHY: 1.2초 내 스트림 미수신 시 mp4로 즉시 스왑(빈 화면 체감 제거) */
         guardRef.current = setTimeout(() => {
           const v = videoRef.current;
           const hasStream = v && v.srcObject instanceof MediaStream;
@@ -368,7 +373,6 @@ Generate 20 OPIC-style interview questions in English.
         }, 1200);
       }
 
-      // (3) mp4: 프리페치가 있으면 즉시, 없으면 백그라운드 렌더
       const v = videoRef.current;
       if (preUrl && v) {
         v.srcObject = null;
@@ -378,14 +382,12 @@ Generate 20 OPIC-style interview questions in English.
         if (guardRef.current) { clearTimeout(guardRef.current); guardRef.current = null; }
         v.play().catch(() => { });
       } else if (!sid) {
-        // 스트리밍 불가 시 바로 mp4
         swapToMp4WhenReady(q);
       }
 
-      // (4) 다음 것도 프리페치 시작
       queuePrefetch(2);
-    } finally {
-      setLoading(false);
+    } catch (e) {
+      console.error('runOne failed', e);
     }
   };
 
@@ -401,7 +403,6 @@ Generate 20 OPIC-style interview questions in English.
   }, [ui]);
 
   // start/survey에서도 조기 프리페치
-
   useEffect(() => {
     if (!serverReady) return;
     if (ui === "start" || ui === "survey") {
@@ -438,15 +439,6 @@ Generate 20 OPIC-style interview questions in English.
     }
   };
 
-  const transcribeAudio = async (audioBlob) => {
-    const formData = new FormData();
-    formData.append("file", audioBlob, recMime === "audio/mp4" ? "recording.m4a" : "recording.webm");
-    const res = await fetch(`${API_BASE}/stt`, { method: "POST", body: formData });
-    if (!res.ok) throw new Error(`/stt ${res.status}`);
-    const data = await res.json();
-    return data.text || "";
-  };
-
   const stopRecording = () => {
     if (!mediaRecorder) return;
     try {
@@ -455,10 +447,6 @@ Generate 20 OPIC-style interview questions in English.
         const blob = new Blob(mediaRecorder.chunks, { type });
         const url = URL.createObjectURL(blob);
         setAudioURL(url);
-        try {
-          const transcript = await transcribeAudio(blob);
-          setMemo((prev) => prev + "\n" + (transcript || ""));
-        } catch { }
       };
       mediaRecorder.stop();
       setIsRecording(false);
@@ -510,295 +498,312 @@ ${q}
   };
 
   /* ── 렌더 ─────────────────────────────── */
-  if (!serverReady) {
-    return (
-      <div className="start-screen">
-        <h1 className="start-title">OPIC</h1>
-        <p className="start-subtitle">서버 깨우는 중…</p>
-      </div>
-    );
-  }
-
-  if (ui === "start") {
-    return (
-      <div className="start-screen">
-        <h1 className="start-title">OPIC</h1>
-        <p className="start-subtitle" onClick={() => setUi("survey")} style={{ cursor: "pointer" }}>
-          Let’s start practice
-        </p>
-      </div>
-    );
-  }
-
-  if (ui === "survey") {
-    return (
-      <div className="survey-wrap">
-        <div className="survey-card">
-          <h2 className="survey-title">
-            <i className="fa-regular fa-file-lines" style={{ marginRight: 10 }} />
-            OPIC Survey
-          </h2>
-
-          <div className="survey-grid">
-            <div className="field">
-              <label>레벨</label>
-              <select
-                value={level}
-                onChange={(e) => { setLevel(e.target.value); localStorage.setItem(LS.level, e.target.value); }}
-              >
-                {["IM2–IH", "IL–IM1", "IH–AL"].map((l) => (
-                  <option key={l} value={l}>{l}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="field">
-              <label>거주 형태</label>
-              <select
-                value={residence}
-                onChange={(e) => { setResidence(e.target.value); localStorage.setItem(LS.residence, e.target.value); }}
-              >
-                <option value="">(선택)</option>
-                {SURVEY.residenceOptions.map((x) => (<option key={x} value={x}>{x}</option>))}
-              </select>
-            </div>
-
-            <div className="field">
-              <label>역할</label>
-              <select
-                value={role}
-                onChange={(e) => { setRole(e.target.value); localStorage.setItem(LS.role, e.target.value); }}
-              >
-                <option value="">(선택)</option>
-                {SURVEY.roles.map((x) => (<option key={x} value={x}>{x}</option>))}
-              </select>
-            </div>
-
-            <div className="field">
-              <label>최근 수강 이력</label>
-              <select
-                value={recentCourse}
-                onChange={(e) => { setRecentCourse(e.target.value); localStorage.setItem(LS.recentCourse, e.target.value); }}
-              >
-                <option value="">(선택)</option>
-                {SURVEY.recentCourseOptions.map((x) => (<option key={x} value={x}>{x}</option>))}
-              </select>
-            </div>
-          </div>
-
-          <div className="topics">
-            <div className="topics-head">Topics (multi-select)</div>
-            <div className="chip-row">
-              {SURVEY.topics.map((t) => {
-                const active = selectedTopics.includes(t.key);
-                return (
-                  <button
-                    key={t.key}
-                    onClick={() => {
-                      setSelectedTopics((prev) => {
-                        const next = prev.includes(t.key)
-                          ? prev.filter((k) => k !== t.key)
-                          : [...prev, t.key];
-                        localStorage.setItem(LS.topics, JSON.stringify(next));
-                        return next;
-                      });
-                    }}
-                    className={`chip ${active ? "active" : ""}`}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="hint">아무 것도 선택하지 않으면 모든 주제에서 무작위로 출제됩니다.</p>
-          </div>
-
-          <div className="actions">
-            <button className="btn ghost" onClick={() => setUi("start")}>뒤로</button>
-            <button
-              className="btn primary"
-              disabled={loading}
-              // 화면/문구 그대로, 내부에서만 미리 붙이고 시작
-
-              onClick={async () => { await initStreamingOnce(); setUi("practice"); }}
-            >
-              {loading ? "로딩 중..." : "이 설정으로 시작"}
-            </button>
+  return (
+    <>
+      {loading && (
+        <div className="loading-overlay">
+          <div className="loading-logo-reveal">
+            <h1>
+              {'OPIC'.split('').map((char, index) => (
+                <span
+                  key={index}
+                  style={{ animationDelay: `${index * 0.2}s` }}
+                >
+                  {char}
+                </span>
+              ))}
+            </h1>
+            <p>AI가 맞춤형 질문을 생성중입니다...</p>
           </div>
         </div>
-      </div>
-    );
-  }
+      )}
 
-  if (ui === "practice") {
-    return (
-      <div className="App started">
-        <h2>오늘의 질문</h2>
-        <h3>남은 시간: {timeLeft}초</h3>
+      {!serverReady && (
+        <div className="start-screen">
+          <h1 className="start-title">OPIC</h1>
+          <p className="start-subtitle">서버 깨우는 중…</p>
+        </div>
+      )}
 
-        {/* 아바타: 비디오 + 프리뷰(빈 공간 방지) */}
-        <div style={{ position: "relative", width: 360, height: 360, marginTop: 16 }}>
-          <video
-            ref={videoRef}
-            playsInline
-            autoPlay
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", borderRadius: 16, objectFit: "cover" }}
-            onLoadedData={() => setVideoReady(true)}
-          />
-          {!videoReady && (
-            <div
-              style={{
-                position: "absolute", inset: 0, borderRadius: 16,
-                background: `center/cover no-repeat url(${process.env.REACT_APP_AVATAR_IMAGE_URL || ""})`,
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-            >
-              <div style={{
-                width: 120, height: 12, borderRadius: 6,
-                background: "linear-gradient(90deg, #223 0%, #334 50%, #223 100%)",
-                animation: "shimmer 1.2s infinite linear",
-              }} />
+      {serverReady && ui === 'start' && (
+        <div className="start-screen">
+          <h1 className="start-title">OPIC</h1>
+          <p className="start-subtitle" onClick={() => setUi("survey")} style={{ cursor: "pointer" }}>
+            Let’s start practice
+          </p>
+        </div>
+      )}
+
+      {serverReady && ui === 'survey' && (
+        <div className="survey-wrap">
+          <div className="survey-card">
+            <h2 className="survey-title">
+              <i className="fa-regular fa-file-lines" style={{ marginRight: 10 }} />
+              OPIC Survey
+            </h2>
+
+            <div className="survey-grid">
+              <div className="field">
+                <label>레벨</label>
+                <select
+                  value={level}
+                  onChange={(e) => { setLevel(e.target.value); localStorage.setItem(LS.level, e.target.value); }}
+                >
+                  {["IM2–IH", "IL–IM1", "IH–AL"].map((l) => (
+                    <option key={l} value={l}>{l}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field">
+                <label>거주 형태</label>
+                <select
+                  value={residence}
+                  onChange={(e) => { setResidence(e.target.value); localStorage.setItem(LS.residence, e.target.value); }}
+                >
+                  <option value="">(선택)</option>
+                  {SURVEY.residenceOptions.map((x) => (<option key={x} value={x}>{x}</option>))}
+                </select>
+              </div>
+
+              <div className="field">
+                <label>역할</label>
+                <select
+                  value={role}
+                  onChange={(e) => { setRole(e.target.value); localStorage.setItem(LS.role, e.target.value); }}
+                >
+                  <option value="">(선택)</option>
+                  {SURVEY.roles.map((x) => (<option key={x} value={x}>{x}</option>))}
+                </select>
+              </div>
+
+              <div className="field">
+                <label>최근 수강 이력</label>
+                <select
+                  value={recentCourse}
+                  onChange={(e) => { setRecentCourse(e.target.value); localStorage.setItem(LS.recentCourse, e.target.value); }}
+                >
+                  <option value="">(선택)</option>
+                  {SURVEY.recentCourseOptions.map((x) => (<option key={x} value={x}>{x}</option>))}
+                </select>
+              </div>
             </div>
-          )}
-        </div>
 
-        <button
-          className="btn primary"
-          onClick={() => {
-            const v = videoRef.current;
-            if (!v) return;
-            if (v.srcObject) v.play().catch(() => { });
-            else { v.currentTime = 0; v.play().catch(() => { }); }
-          }}
-          style={{ marginTop: 12 }}
-        >
-          ▶ 다시 보기
-        </button>
+            <div className="topics">
+              <div className="topics-head">Topics (multi-select)</div>
+              <div className="chip-row">
+                {SURVEY.topics.map((t) => {
+                  const active = selectedTopics.includes(t.key);
+                  return (
+                    <button
+                      key={t.key}
+                      onClick={() => {
+                        setSelectedTopics((prev) => {
+                          const next = prev.includes(t.key)
+                            ? prev.filter((k) => k !== t.key)
+                            : [...prev, t.key];
+                          localStorage.setItem(LS.topics, JSON.stringify(next));
+                          return next;
+                        });
+                      }}
+                      className={`chip ${active ? "active" : ""}`}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="hint">아무 것도 선택하지 않으면 모든 주제에서 무작위로 출제됩니다.</p>
+            </div>
 
-        {/* 질문 텍스트는 화면에 표시하지 않음 */}
-
-        {!isRecording ? (
-          <button onClick={startRecording} style={{ marginTop: 16 }}>
-            <i className="fas fa-microphone"></i> 녹음 시작
-          </button>
-        ) : (
-          <button onClick={stopRecording} style={{ marginTop: 16 }}>
-            <i className="fas fa-stop-circle"></i> 녹음 정지
-          </button>
-        )}
-
-        {audioURL && (
-          <div style={{ marginTop: 12 }}>
-            <audio controls src={audioURL} />
+            <div className="actions">
+              <button className="btn ghost" onClick={() => setUi("start")}>뒤로</button>
+              <button
+                className="btn primary"
+                disabled={loading}
+                onClick={async () => {
+                  setLoading(true);
+                  await ensureQuestionBank();
+                  await runOne();
+                  setUi("practice");
+                }}
+              >
+                {"이 설정으로 시작"}
+              </button>
+            </div>
           </div>
-        )}
-
-        <button onClick={runOne} disabled={loading} style={{ marginTop: 16 }}>
-          <i className="fas fa-shuffle"></i> {loading ? "새 질문 로딩…" : "다른 질문 받기"}
-        </button>
-
-        <div style={{ marginTop: 40 }}>
-          <h3>📝 내 답변 메모하기</h3>
-          <textarea
-            value={memo}
-            onChange={(e) => setMemo(e.target.value)}
-            rows={5}
-            cols={50}
-            placeholder="여기에 영어로 말한 내용을 적어보세요!"
-          />
         </div>
+      )}
 
-        {isFinished && (
-          <>
-            <button onClick={fetchBestAnswerFromGPT}>
-              <i className="fas fa-magic"></i> 모범답안 요청하기
-            </button>
-            <button onClick={handleSave}>
-              <i className="fas fa-floppy-disk"></i> 질문 + 메모 저장
-            </button>
-            <button
-              onClick={() => {
-                const history = JSON.parse(localStorage.getItem(LS.history) || "[]");
-                setSavedHistory(history);
-                setUi("review");
-              }}
-            >
-              <i className="fas fa-folder-open"></i> 저장된 질문/답변 보기
-            </button>
-          </>
-        )}
+      {serverReady && ui === 'practice' && (
+        <div className="App started">
+          <h2>오늘의 질문</h2>
+          <h3>남은 시간: {timeLeft}초</h3>
 
-        <div className="practice-actions">
-          <button type="button" className="btn-reset" onClick={() => setUi("survey")} title="설문 다시하기">
-            <i className="fas fa-arrow-left icon-nudge" aria-hidden="true"></i> 설문 다시하기
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (ui === "review") {
-    return (
-      <div className="App started review-mode">
-        <h2>
-          <i className="fas fa-book-journal-whills" style={{ color: "#4e47d1", marginRight: 10 }}></i>
-          저장된 질문과 답변
-        </h2>
-
-        <button onClick={async () => { setUi("practice"); await runOne(); setIsFinished(false); }}>
-          <i className="fas fa-arrow-left"></i> 다른 문제 풀기
-        </button>
-
-        {savedHistory.map((item, index) => (
-          <div
-            key={index}
-            className="question-block"
-            style={{
-              width: "80%",
-              minHeight: 120,
-              margin: "20px auto",
-              padding: 20,
-              border: "1px solid #ccc",
-              borderRadius: 10,
-              backgroundColor: "#f9f9f9",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-            }}
-          >
-            <p>
-              <strong>
-                <i className="fas fa-question-circle" style={{ marginRight: 8, color: "#6c63ff" }}></i>
-                Q{index + 1}.
-              </strong>
-            </p>
-
-            <button
-              onClick={() => setOpenAnswerIndex(openAnswerIndex === index ? null : index)}
-            >
-              <i className={`fas ${openAnswerIndex === index ? "fa-chevron-up" : "fa-comment-dots"}`}></i>
-              &nbsp;{openAnswerIndex === index ? "답변 숨기기" : "답변 보기"}
-            </button>
-
-            {openAnswerIndex === index && (
-              <>
-                <p style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
-                  💬 <em>{item.memo}</em>
-                </p>
-                {item.gptAnswer && (
-                  <div className="gpt-answer-box">
-                    <strong>➡️ GPT 모범답안</strong>
-                    <hr />
-                    <em>{item.gptAnswer}</em>
-                  </div>
-                )}
-              </>
+          <div style={{ position: "relative", width: 360, height: 360, marginTop: 16 }}>
+            <video
+              ref={videoRef}
+              playsInline
+              autoPlay
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", borderRadius: 16, objectFit: "cover" }}
+              onLoadedData={() => setVideoReady(true)}
+            />
+            {!videoReady && (
+              <div
+                style={{
+                  position: "absolute", inset: 0, borderRadius: 16,
+                  background: `center/cover no-repeat url(${process.env.REACT_APP_AVATAR_IMAGE_URL || ""})`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                <div style={{
+                  width: 120, height: 12, borderRadius: 6,
+                  background: "linear-gradient(90deg, #223 0%, #334 50%, #223 100%)",
+                  animation: "shimmer 1.2s infinite linear",
+                }} />
+              </div>
             )}
           </div>
-        ))}
-      </div>
-    );
-  }
 
-  return null;
+          <button
+            className="btn primary"
+            onClick={() => {
+              const v = videoRef.current;
+              if (!v) return;
+              if (v.srcObject) v.play().catch(() => { });
+              else { v.currentTime = 0; v.play().catch(() => { }); }
+            }}
+            style={{ marginTop: 12 }}
+          >
+            ▶ 다시 보기
+          </button>
+
+          {!isRecording ? (
+            <button onClick={startRecording} style={{ marginTop: 16 }}>
+              <i className="fas fa-microphone"></i> 녹음 시작
+            </button>
+          ) : (
+            <button onClick={stopRecording} style={{ marginTop: 16 }}>
+              <i className="fas fa-stop-circle"></i> 녹음 정지
+            </button>
+          )}
+
+          {audioURL && (
+            <div style={{ marginTop: 12 }}>
+              <audio controls src={audioURL} />
+            </div>
+          )}
+
+          <button
+            onClick={async () => {
+              setLoading(true);
+              await runOne();
+            }}
+            disabled={loading}
+            style={{ marginTop: 16 }}
+          >
+            <i className="fas fa-shuffle"></i> {loading ? "새 질문 로딩…" : "다른 질문 받기"}
+          </button>
+
+          <div style={{ marginTop: 40 }}>
+            <h3>📝 내 답변 메모하기</h3>
+            <textarea
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              rows={5}
+              cols={50}
+              placeholder="여기에 영어로 말한 내용을 적어보세요!"
+            />
+          </div>
+
+          {isFinished && (
+            <>
+              <button onClick={fetchBestAnswerFromGPT}>
+                <i className="fas fa-magic"></i> 모범답안 요청하기
+              </button>
+              <button onClick={handleSave}>
+                <i className="fas fa-floppy-disk"></i> 질문 + 메모 저장
+              </button>
+              <button
+                onClick={() => {
+                  const history = JSON.parse(localStorage.getItem(LS.history) || "[]");
+                  setSavedHistory(history);
+                  setUi("review");
+                }}
+              >
+                <i className="fas fa-folder-open"></i> 저장된 질문/답변 보기
+              </button>
+            </>
+          )}
+
+          <div className="practice-actions">
+            <button type="button" className="btn-reset" onClick={() => setUi("survey")} title="설문 다시하기">
+              <i className="fas fa-arrow-left icon-nudge" aria-hidden="true"></i> 설문 다시하기
+            </button>
+          </div>
+        </div>
+      )}
+
+      {serverReady && ui === 'review' && (
+        <div className="App started review-mode">
+          <h2>
+            <i className="fas fa-book-journal-whills" style={{ color: "#4e47d1", marginRight: 10 }}></i>
+            저장된 질문과 답변
+          </h2>
+
+          <button onClick={async () => { setUi("practice"); await runOne(); setIsFinished(false); }}>
+            <i className="fas fa-arrow-left"></i> 다른 문제 풀기
+          </button>
+
+          {savedHistory.map((item, index) => (
+            <div
+              key={index}
+              className="question-block"
+              style={{
+                width: "80%",
+                minHeight: 120,
+                margin: "20px auto",
+                padding: 20,
+                border: "1px solid #ccc",
+                borderRadius: 10,
+                backgroundColor: "#f9f9f9",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              }}
+            >
+              <p>
+                <strong>
+                  <i className="fas fa-question-circle" style={{ marginRight: 8, color: "#6c63ff" }}></i>
+                  Q{index + 1}.
+                </strong>
+              </p>
+
+              <button
+                onClick={() => setOpenAnswerIndex(openAnswerIndex === index ? null : index)}
+              >
+                <i className={`fas ${openAnswerIndex === index ? "fa-chevron-up" : "fa-comment-dots"}`}></i>
+                &nbsp;{openAnswerIndex === index ? "답변 숨기기" : "답변 보기"}
+              </button>
+
+              {openAnswerIndex === index && (
+                <>
+                  <p style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+                    💬 <em>{item.memo}</em>
+                  </p>
+                  {item.gptAnswer && (
+                    <div className="gpt-answer-box">
+                      <strong>➡️ GPT 모범답안</strong>
+                      <hr />
+                      <em>{item.gptAnswer}</em>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
 }
 
 export default App;
