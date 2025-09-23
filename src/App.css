@@ -4,7 +4,7 @@ body {
   background-color: #0d1b44;
   font-family: 'Poppins', 'Noto Sans KR', sans-serif;
   color: #fff;
-  overflow: auto;
+  overflow-x: hidden;
 }
 
 /* 시작 화면 스타일 */
@@ -15,10 +15,12 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  text-align: center;
 }
 
 .start-title {
-  font-size: clamp(100px, 20vw, 300px);
+  font-size: clamp(100px, 22vw, 240px);
+  /* [수정됨] 웹 화면 글꼴 크기 증가 */
   font-weight: bold;
   background: linear-gradient(to bottom, #ffffff, #aaaaaa);
   -webkit-background-clip: text;
@@ -39,7 +41,7 @@ body {
 }
 
 .start-subtitle {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 600;
   color: #ccc;
   letter-spacing: 2px;
@@ -48,6 +50,7 @@ body {
   animation-delay: 1s;
   cursor: pointer;
   transition: color 0.3s;
+  padding: 0 20px;
 }
 
 @keyframes fadeInText {
@@ -70,65 +73,78 @@ body {
 /* 앱 본문 컨테이너 */
 .App,
 .App.started {
+  width: 100%;
   max-height: none;
   overflow-y: visible;
-  padding-bottom: 120px;
+  padding: 40px 20px 120px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  box-sizing: border-box;
 }
 
 /* 공통 버튼 스타일 */
 button {
-  padding: 14px 28px;
+  padding: 12px 24px;
   font-size: 16px;
   margin: 12px 8px 0;
   cursor: pointer;
   border: none;
   border-radius: 12px;
-  background: linear-gradient(to right, #3b82f6, #60a5fa);
+  background: linear-gradient(135deg, #5a67d8, #818cf8);
   color: white;
   font-weight: 600;
-  box-shadow: 0 6px 18px rgba(108, 99, 255, 0.3);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
   transition: all 0.3s ease;
-  backdrop-filter: blur(4px);
   letter-spacing: 0.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 button:hover {
-  transform: translateY(-4px) scale(1.03);
-  background: linear-gradient(to right, #2563eb, #3b82f6);
-  box-shadow: 0 10px 30px rgba(108, 99, 255, 0.5);
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 8px 25px rgba(90, 103, 216, 0.4);
 }
 
 button:disabled {
-  opacity: .7;
+  opacity: .6;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
 /* 질문 텍스트 */
 h2 {
   margin-top: 20px;
-  font-size: 28px;
+  font-size: 24px;
+  text-align: center;
+  padding: 0 20px;
+  max-width: 800px;
+  line-height: 1.5;
 }
 
 h3 {
   margin-top: 10px;
-  font-size: 20px;
+  font-size: 18px;
+  color: #bdc1d1;
 }
 
 /* 텍스트 입력 영역 */
 textarea {
-  padding: 12px;
+  padding: 12px 16px;
   font-size: 16px;
   border-radius: 10px;
   border: 1px solid #ccc;
   width: 100%;
   max-width: 600px;
-  resize: none;
+  resize: vertical;
+  min-height: 100px;
   margin-top: 12px;
   background-color: #fff;
   color: #222;
+  box-sizing: border-box;
 }
 
 /* 질문/답변 박스 */
@@ -136,41 +152,107 @@ textarea {
   width: 100%;
   max-width: 800px;
   background-color: #ffffff;
-  padding: 20px;
-  border-radius: 12px;
+  padding: 24px;
+  border-radius: 16px;
   margin: 16px auto;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   text-align: left;
   overflow: hidden;
-  color: #222;
+  color: #333;
+  transition: all 0.3s ease;
 }
 
 .question-block p {
   margin: 0;
   white-space: pre-wrap;
+  line-height: 1.6;
 }
+
+.review-toggle-btn {
+  margin-top: 16px !important;
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+}
+
+.review-toggle-btn.open {
+  background: #e2e8f0 !important;
+}
+
+.answer-content {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+  animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 
 /* 모범답안 박스 */
 .gpt-answer-box {
-  background-color: #e9f0ff;
-  border-left: 4px solid #3b82f6;
+  background-color: #eef2ff;
+  border-left: 4px solid #6366f1;
   color: #333;
-  font-style: italic;
   padding: 16px;
   border-radius: 8px;
-  margin-top: 12px;
+  margin-top: 16px;
   white-space: pre-wrap;
 }
 
-.review-mode {
-  background-color: #f4f4f6;
-  min-height: 100vh;
-  padding-top: 40px;
-  padding-bottom: 80px;
+/* AI 모범답안 제목 아래에 파란색 구분선 추가 */
+.gpt-answer-box strong {
+  display: block;
+  font-weight: 600;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #c7d2fe;
 }
 
-.review-mode h2 {
-  color: #222;
+
+/* ===== Review 화면 스타일 ===== */
+.review-mode,
+.review-latest-view {
+  background-color: #f1f5f9;
+  min-height: 100vh;
+  padding-top: 60px;
+  padding-bottom: 120px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.review-mode h2,
+.review-latest-view h2 {
+  color: #1e293b;
+}
+
+.review-latest-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.review-latest-view .question-block {
+  padding: 0;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+}
+
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 20px;
 }
 
 /* ===== OPIC Survey 레이아웃 & 토픽 버튼 커스터마이즈 ===== */
@@ -238,12 +320,12 @@ textarea {
 }
 
 .chip {
-  background: #ffffff !important;
-  color: #2563eb !important;
-  border: 1px solid #93c5fd;
+  background: rgba(255, 255, 255, 0.9) !important;
+  color: #4338ca !important;
+  border: 1px solid transparent;
   box-shadow: none !important;
-  padding: 12px 16px !important;
-  border-radius: 12px !important;
+  padding: 10px 16px !important;
+  border-radius: 30px !important;
   font-size: 15px !important;
   font-weight: 600 !important;
   letter-spacing: 0.2px;
@@ -251,22 +333,23 @@ textarea {
 }
 
 .chip:hover {
-  background: #2563eb !important;
-  color: #ffffff !important;
+  background: #e0e7ff !important;
+  color: #4338ca !important;
   transform: translateY(-2px);
+  border-color: #c7d2fe;
 }
 
 .chip.active {
-  background: #2563eb !important;
+  background: #6366f1 !important;
   color: #ffffff !important;
-  border-color: #2563eb;
+  border-color: transparent;
 }
 
 .hint {
-  color: #ffffff;
-  font-weight: 700;
+  color: #e2e8f0;
+  font-weight: 500;
   opacity: 0.95;
-  margin-top: 6px;
+  margin-top: 10px;
 }
 
 .actions {
@@ -274,6 +357,11 @@ textarea {
   justify-content: center;
   gap: 10px;
   margin-top: 18px;
+}
+
+.btn.ghost {
+  background: transparent !important;
+  border: 1px solid #fff;
 }
 
 /* === practice 하단 버튼 영역 === */
@@ -284,31 +372,14 @@ textarea {
 }
 
 button.btn-reset {
-  background: #ffffff !important;
-  color: #2563eb !important;
-  border: 2px solid #2563eb !important;
-  border-radius: 12px;
-  padding: 12px 18px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.18);
-  transition: all 0.25s ease;
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
 }
 
 button.btn-reset:hover {
-  background: #ffffff !important;
-  color: #2563eb !important;
-  border-color: #2563eb !important;
-  transform: translateY(-3px);
-  box-shadow: 0 10px 26px rgba(37, 99, 235, 0.28);
-}
-
-button.btn-reset:active,
-button.btn-reset:focus {
-  background: #2563eb !important;
-  color: #ffffff !important;
-  border-color: #2563eb !important;
-  outline: none !important;
+  background: rgba(255, 255, 255, 0.2) !important;
+  border-color: #fff !important;
 }
 
 .icon-nudge {
@@ -334,7 +405,6 @@ button.btn-reset:focus {
   position: fixed;
   inset: 0;
   background-color: rgba(10, 25, 49, 0.7);
-  -webkit-backdrop-filter: blur(5px);
   backdrop-filter: blur(5px);
   display: flex;
   flex-direction: column;
@@ -343,73 +413,114 @@ button.btn-reset:focus {
   z-index: 999;
 }
 
-.loading-logo-reveal {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+.loading-logo-reveal h1 {
+  font-size: 54px;
 }
 
-.loading-logo-reveal h1 {
-  font-size: 64px;
-  font-weight: 900;
-  letter-spacing: 4px;
-  display: flex;
-  justify-content: center;
+.loading-logo-reveal p {
+  font-size: 18px;
+}
+
+.loading-logo-reveal h1,
+.loading-logo-reveal p {
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-align: center;
 }
 
 .loading-logo-reveal span {
   display: inline-block;
-  background: linear-gradient(to top, #7e78d2 100%, #eee 100%);
-  background-size: 100% 200%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: fill-and-fade 2s ease-in-out infinite;
+  opacity: 0;
+  animation: fadeInText 2s infinite;
 }
 
-.loading-logo-reveal p {
-  text-align: center;
-  margin-top: 16px;
-  font-size: 18px;
-  color: #eee;
-  animation: fill-and-fade 2s 0.5s ease-in-out infinite;
+/* ===== 스크롤 버튼들 ===== */
+.scroll-btn {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  padding: 0;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  animation: bounce-in 0.5s forwards;
 }
 
-@keyframes fill-and-fade {
-  0% {
-    background-position: bottom;
+.scroll-btn:hover {
+  transform: translateX(-50%) translateY(-5px) scale(1.1);
+  box-shadow: 0 8px 25px rgba(79, 70, 229, 0.5);
+}
+
+.scroll-to-bottom-btn {
+  animation: bounce-in 0.5s forwards, bounce-vertical 2s infinite 0.5s;
+}
+
+@keyframes bounce-in {
+  from {
+    transform: translateX(-50%) scale(0.5);
     opacity: 0;
   }
 
-  50% {
-    background-position: top;
+  to {
+    transform: translateX(-50%) scale(1);
     opacity: 1;
   }
+}
 
+@keyframes bounce-vertical {
+
+  0%,
+  20%,
+  50%,
+  80%,
   100% {
-    background-position: top;
-    opacity: 0;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  40% {
+    transform: translateX(-50%) translateY(-10px);
+  }
+
+  60% {
+    transform: translateX(-50%) translateY(-5px);
   }
 }
+
 
 /* ===== 반응형 정리 ===== */
 @media screen and (max-width: 768px) {
-  .App {
-    padding: 20px 10px 80px;
+
+  .App,
+  .App.started {
+    padding: 20px 15px 80px;
+  }
+
+  .review-latest-view {
+    padding: 20px 15px;
   }
 
   button {
-    width: 100%;
+    width: auto;
     max-width: 90%;
   }
 
   textarea {
+    width: 100%;
     max-width: 100%;
   }
 
   .question-block {
     padding: 16px;
+  }
+
+  .actions {
+    flex-direction: column;
+    align-items: center;
   }
 }
 
@@ -427,25 +538,17 @@ button.btn-reset:focus {
   }
 
   .start-title {
-    font-size: clamp(60px, 16vw, 100px);
+    font-size: clamp(60px, 25vw, 120px);
+    /* [수정됨] 모바일 화면 글꼴 크기 증가 */
   }
 
   .start-subtitle {
     font-size: 18px;
-    text-align: center;
-    padding: 0 10px;
-  }
-
-  .App,
-  .App.started {
-    padding: 20px 10px;
   }
 
   button {
     padding: 12px 18px;
     font-size: 15px;
-    width: 100%;
-    max-width: 100%;
   }
 
   textarea {
@@ -454,15 +557,64 @@ button.btn-reset:focus {
   }
 
   .question-block {
-    margin: 12px 8px;
-    padding: 14px;
+    margin: 12px 0;
+    padding: 16px;
   }
 
   .gpt-answer-box {
-    font-size: 15px;
+    font-size: 14px;
   }
+}
 
-  .btn-reset {
-    width: 90%;
-  }
+/* ===== [추가됨] Review 화면 카드 디자인 개선 ===== */
+
+/* 카드 헤더 컨테이너 */
+.review-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #f8fafc;
+  /* 은은한 배경색 */
+  padding: 16px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  /* 얇은 구분선 */
+}
+
+/* 헤더 왼쪽 (아이콘 + 제목) */
+.review-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 헤더 아이콘 스타일 */
+.review-header .fas.fa-sparkles {
+  color: #6366f1;
+  /* 앱의 메인 컬러 */
+  font-size: 18px;
+}
+
+/* 헤더 제목 스타일 */
+.review-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #334155;
+  /* 너무 진하지 않은 세련된 검은색 */
+}
+
+/* 'LATEST' 뱃지 스타일 */
+.latest-badge {
+  background-color: #eef2ff;
+  color: #4f46e5;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+/* 질문과 답변이 들어가는 실제 콘텐츠 영역 */
+.review-content {
+  padding: 24px;
 }

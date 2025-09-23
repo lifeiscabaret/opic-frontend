@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 
@@ -50,7 +50,6 @@ const SURVEY = {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// 폴백질문
 const FALLBACK_QUESTIONS = [
   "Tell me about a recent weekend activity you really enjoyed and why it was meaningful.",
   "Describe your favorite place at home and how you usually spend time there.",
@@ -63,12 +62,13 @@ const FALLBACK_QUESTIONS = [
 ];
 
 function App() {
-  // 공통 ui
-  const [ui, setUi] = useState("start"); // start | survey | practice | review
+  // Common UI state
+  const [ui, setUi] = useState("start");
   const [serverReady, setServerReady] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState("AI가 맞춤형 질문을 생성중입니다...");
 
-  // 설문 상태
+  // Survey state
   const [level, setLevel] = useState(localStorage.getItem(LS.level) || "IH–AL");
   const [residence, setResidence] = useState(localStorage.getItem(LS.residence) || "");
   const [role, setRole] = useState(localStorage.getItem(LS.role) || "");
@@ -77,94 +77,37 @@ function App() {
     JSON.parse(localStorage.getItem(LS.topics) || "[]")
   );
 
-  // 연습 상태
+  // Practice state
   const [question, setQuestion] = useState("");
   const [timeLeft, setTimeLeft] = useState(60);
   const [timerRunning, setTimerRunning] = useState(false);
-
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [recMime, setRecMime] = useState("audio/webm");
   const [isRecording, setIsRecording] = useState(false);
   const [audioURL, setAudioURL] = useState("");
   const [memo, setMemo] = useState("");
   const [isFinished, setIsFinished] = useState(false);
+
+  // Review state
   const [savedHistory, setSavedHistory] = useState([]);
   const [openAnswerIndex, setOpenAnswerIndex] = useState(null);
+  const [reviewMode, setReviewMode] = useState('latest'); // 'latest' or 'list'
 
-  // 속도개선
   const videoRef = useRef(null);
-  const pcRef = useRef(null);
-  const [sessionId, setSessionId] = useState("");
-  const [videoReady, setVideoReady] = useState(false);
-  const guardRef = useRef(null);
+  const audioRef = useRef(null);
 
-  // 질문 배치 캐시
+  // Question bank cache
   const [questionBank, setQuestionBank] = useState([]);
   const [bankLoading, setBankLoading] = useState(false);
 
-  // 프리페치(다음 질문/영상)
-  const [nextQuestion, setNextQuestion] = useState("");
-  const [nextAvatarUrl, setNextAvatarUrl] = useState("");
+  // Scroll buttons state and functions
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+  const scrollToBottom = () => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
 
-  /* ── WebRTC: 1회 초기화 후 재사용 ─────── */
-  const initStreamingOnce = useCallback(async () => {
-    if (pcRef.current && sessionId) return sessionId;
-
-    try {
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-      });
-      pcRef.current = pc;
-
-      pc.ontrack = (e) => {
-        const [stream] = e.streams;
-        const v = videoRef.current;
-        if (v && stream) {
-          v.srcObject = stream;
-          v.playsInline = true;
-          v.autoplay = true;
-          v.muted = false;
-          if (guardRef.current) { clearTimeout(guardRef.current); guardRef.current = null; }
-          v.play().catch(() => { });
-        }
-      };
-
-      pc.createDataChannel("d");
-      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
-      await pc.setLocalDescription(offer);
-
-      const r = await fetch(`${API_BASE}/api/did/webrtc/offer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sdp: offer.sdp }),
-      });
-
-      const j = await r.json();
-      if (!r.ok || !j?.answer || !j?.session_id) throw new Error("no answer/session_id");
-      await pc.setRemoteDescription({ type: "answer", sdp: j.answer });
-      setSessionId(j.session_id);
-      return j.session_id;
-    } catch (e) {
-      console.error("initStreamingOnce error", e);
-      return "";
-    }
-  }, [sessionId]);
-
-  const sendTalk = async (text) => {
-    if (!text?.trim() || !sessionId) return;
-    try {
-      await fetch(`${API_BASE}/api/did/webrtc/talk`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, text }),
-      });
-    } catch (e) {
-      console.error("sendTalk error", e);
-    }
-  };
-
-  /* ── 서버 깨우기 ─────────────────────── */
-  async function wakeBackend() {
+  /* ── Wake up backend server ─────────────────────── */
+  const wakeBackend = async () => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     try {
@@ -191,22 +134,7 @@ function App() {
     return () => { mounted = false; };
   }, []);
 
-  /* ── 로딩 관리 ───────────────────────── */
-  useEffect(() => {
-    if (videoReady) {
-      setLoading(false);
-    }
-  }, [videoReady]);
-
-  //  서버 준비되면 start/survey에서도 스트리밍 세션 미리 붙임
-  useEffect(() => {
-    if (!serverReady) return;
-    if (ui === "start" || ui === "survey") {
-      initStreamingOnce();
-    }
-  }, [serverReady, ui, initStreamingOnce]);
-
-  /* ── 타이머 ──────────────────────────── */
+  /* ── Timer ──────────────────────────── */
   useEffect(() => {
     if (ui !== "practice" || !timerRunning) return;
     if (timeLeft <= 0) {
@@ -218,13 +146,49 @@ function App() {
     return () => clearInterval(id);
   }, [ui, timerRunning, timeLeft]);
 
-  /* ── 질문 배치 캐시 ──────────────────── */
+  /* ── Scroll Buttons Visibility Logic ───────────────── */
+  useEffect(() => {
+    const handleScroll = () => {
+      const isScrolled = window.scrollY > 200;
+      setShowScrollTop(isScrolled);
+
+      if (ui === 'review' && reviewMode === 'list') {
+        const isAtBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 50;
+        setShowScrollBottom(!isAtBottom && document.body.scrollHeight > window.innerHeight + 50);
+      } else {
+        setShowScrollBottom(false);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll(); // Run on mount and view change
+
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [ui, reviewMode, savedHistory]);
+
+
+  /* ── Question Bank Cache ──────────────────── */
   const fetchQuestionBatch = async () => {
+    const selectedTopicLabels = SURVEY.topics
+      .filter(t => selectedTopics.includes(t.key))
+      .map(t => t.label);
+
     const prompt = `
-Generate 20 OPIC-style interview questions in English.
-- Each 14–22 words, single sentence.
-- Everyday topics (home/routine/hobbies/work/school/travel etc.)
-- Return ONLY a JSON array of strings. No commentary.
+You are an expert OPIC coach. Generate 20 personalized, OPIC-style interview questions in English based on the user's profile below.
+- Return ONLY a JSON array of strings. No extra text or commentary.
+- Each question should be a single sentence, 14-22 words long.
+- Questions should be diverse and not repetitive.
+
+---
+[User Profile]
+Target Level: ${level}
+Role: ${role || 'Not specified'}
+Residence: ${residence || 'Not specified'}
+Recent Course: ${recentCourse || 'Not specified'}
+Selected Topics of Interest: ${selectedTopicLabels.length > 0 ? selectedTopicLabels.join(', ') : 'General everyday topics (home, routine, hobbies, work, school, travel, etc.)'}
+---
+
+Now, generate the questions.
 `.trim();
 
     try {
@@ -235,8 +199,20 @@ Generate 20 OPIC-style interview questions in English.
         body: JSON.stringify({ question: prompt }),
       });
       const data = await res.json();
+
+      // [수정됨] AI 답변에서 순수 JSON 배열만 추출하는 로직
       let arr = [];
-      try { arr = JSON.parse(data?.answer || "[]"); } catch { arr = []; }
+      const rawAnswer = data?.answer || "";
+      const jsonMatch = rawAnswer.match(/\[.*\]/s); // 정규표현식으로 배열 부분만 찾기
+
+      if (jsonMatch && jsonMatch[0]) {
+        try {
+          arr = JSON.parse(jsonMatch[0]); // 찾은 부분만 파싱
+        } catch (e) {
+          console.error("Failed to parse extracted JSON:", e);
+          arr = []; // 파싱 실패 시 빈 배열로 초기화
+        }
+      }
 
       if (!Array.isArray(arr) || arr.length === 0) {
         arr = FALLBACK_QUESTIONS;
@@ -268,151 +244,81 @@ Generate 20 OPIC-style interview questions in English.
     });
   });
 
-  /* ── mp4 렌더 → 스왑(세션은 유지) ─────── */
-  const swapToMp4WhenReady = async (text) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/speak`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      const data = await res.json();
-      if (data?.videoUrl) {
-        const v = videoRef.current;
-        if (v) {
-          v.srcObject = null;
-          v.src = data.videoUrl;
-          v.onloadeddata = () => setVideoReady(true);
-          v.onended = () => { setTimeLeft(60); setTimerRunning(true); };
-          if (guardRef.current) { clearTimeout(guardRef.current); guardRef.current = null; }
-          v.play().catch(() => { });
-        }
-      } else {
-        const approx = Math.min(90, Math.max(4, Math.round(text.split(/\s+/).length * 0.33)));
-        setTimeout(() => { if (!timerRunning) { setTimeLeft(60); setTimerRunning(true); } }, approx * 1000);
-      }
-    } catch {
-      const approx = Math.min(90, Math.max(4, Math.round(text.split(/\s+/).length * 0.33)));
-      setTimeout(() => { if (!timerRunning) { setTimeLeft(60); setTimerRunning(true); } }, approx * 1000);
-    }
-  };
-
-  const queuePrefetch = async (count = 3) => {
-    for (let i = 0; i < count; i++) {
-      if (questionBank.length < 1 && !bankLoading) {
-        await ensureQuestionBank();
-      }
-      await prefetchNext();
-    }
-  };
-
-  /* ── 프리페치(다음 질문/영상) ───────────── */
-  const prefetchNext = async () => {
-    try {
-      const nq = await getNextQuestionFromBank();
-      if (!nq) return;
-
-      const res = await fetch(`${API_BASE}/api/speak`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: nq }),
-      });
-      const data = await res.json();
-      if (data?.videoUrl) {
-        setNextQuestion(nq);
-        setNextAvatarUrl(data.videoUrl);
-      } else {
-        setNextQuestion(nq);
-        setNextAvatarUrl("");
-      }
-    } catch (e) {
-      console.warn("prefetchNext failed", e);
-    }
-  };
-
-  /* ── 한 번 실행(현재 질문) ─────────────── */
+  /* ── Main Practice Logic ─────────────── */
   const runOne = async () => {
-    // setVideoReady(false);
+    setLoadingText("AI가 맞춤형 질문을 생성중입니다...");
+    setLoading(true);
     setTimeLeft(60);
     setTimerRunning(false);
     setIsFinished(false);
     setMemo("");
     setAudioURL("");
-    if (guardRef.current) { clearTimeout(guardRef.current); guardRef.current = null; }
 
     try {
-      let q = nextQuestion;
-      let preUrl = nextAvatarUrl;
-      if (q) {
-        setNextQuestion("");
-        setNextAvatarUrl("");
+      const q = await getNextQuestionFromBank();
+      if (!q) {
+        await ensureQuestionBank();
+        const finalQ = await getNextQuestionFromBank();
+        if (!finalQ) {
+          alert("질문 생성에 실패했습니다. 새로고침 해주세요.");
+          setLoading(false);
+          return;
+        }
+        setQuestion(finalQ);
       } else {
-        q = await getNextQuestionFromBank();
+        setQuestion(q);
       }
-      if (!q) { await ensureQuestionBank(); q = await getNextQuestionFromBank(); }
-      if (!q) { return; }
-      setQuestion(q);
 
-      const sid = await initStreamingOnce();
-      if (sid) {
-        sendTalk(q);
-        guardRef.current = setTimeout(() => {
-          const v = videoRef.current;
-          const hasStream = v && v.srcObject instanceof MediaStream;
-          if (!hasStream) {
-            if (preUrl) {
-              v.srcObject = null;
-              v.src = preUrl;
-              v.onloadeddata = () => setVideoReady(true);
-              v.onended = () => { setTimeLeft(60); setTimerRunning(true); };
-              v.play().catch(() => { });
-            } else {
-              swapToMp4WhenReady(q);
+      const questionToSpeak = q || question;
+
+      if (questionToSpeak) {
+        const res = await fetch(`${API_BASE}/api/tts`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: questionToSpeak }),
+        });
+
+        if (!res.ok) throw new Error('TTS request failed');
+
+        const audioBlob = await res.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+
+        if (audioRef.current && videoRef.current) {
+          audioRef.current.onended = () => {
+            videoRef.current?.pause();
+            setTimeLeft(60);
+            setTimerRunning(true);
+          };
+
+          videoRef.current.onended = () => {
+            if (audioRef.current && !audioRef.current.paused) {
+              videoRef.current.play();
             }
-          }
-        }, 1200);
+          };
+
+          audioRef.current.src = audioUrl;
+          videoRef.current.currentTime = 0;
+          await videoRef.current.play();
+          await audioRef.current.play();
+        }
       }
 
-      const v = videoRef.current;
-      if (preUrl && v) {
-        v.srcObject = null;
-        v.src = preUrl;
-        v.onloadeddata = () => setVideoReady(true);
-        v.onended = () => { setTimeLeft(60); setTimerRunning(true); };
-        if (guardRef.current) { clearTimeout(guardRef.current); guardRef.current = null; }
-        v.play().catch(() => { });
-      } else if (!sid) {
-        swapToMp4WhenReady(q);
-      }
-
-      queuePrefetch(2);
     } catch (e) {
       console.error('runOne failed', e);
+      alert("오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setLoading(false);
     }
   };
 
-  /* ── practice 진입 시: 첫 배치 + 첫 실행 ── */
+  /* ── Entry point for practice screen ── */
   useEffect(() => {
     if (ui !== "practice") return;
-    (async () => {
-      await ensureQuestionBank();
-      await runOne();
-      queuePrefetch(2);
-    })();
+    runOne();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ui]);
 
-  // start/survey에서도 조기 프리페치
-  useEffect(() => {
-    if (!serverReady) return;
-    if (ui === "start" || ui === "survey") {
-      ensureQuestionBank();
-      queuePrefetch(5);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverReady, ui]);
-
-  /* ── 녹음 ─────────────────────────────── */
+  /* ── Recording Logic ────────────────── */
   const startRecording = async () => {
     try {
       const preferredMime = MediaRecorder.isTypeSupported("audio/mp4")
@@ -434,7 +340,7 @@ Generate 20 OPIC-style interview questions in English.
       setMediaRecorder(recorder);
       setIsRecording(true);
     } catch (err) {
-      console.error("녹음 시작 오류:", err);
+      console.error("Recording start error:", err);
       alert("마이크 권한을 확인해 주세요 (설정 > 브라우저 > 마이크 허용).");
     }
   };
@@ -443,20 +349,44 @@ Generate 20 OPIC-style interview questions in English.
     if (!mediaRecorder) return;
     try {
       mediaRecorder.onstop = async () => {
+        setLoadingText("음성을 텍스트로 변환 중입니다...");
+        setLoading(true);
         const type = recMime || "audio/webm";
-        const blob = new Blob(mediaRecorder.chunks, { type });
-        const url = URL.createObjectURL(blob);
-        setAudioURL(url);
+        const audioBlob = new Blob(mediaRecorder.chunks, { type });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        setAudioURL(audioUrl);
+
+        try {
+          const formData = new FormData();
+          formData.append('audio', audioBlob, `recording.${type.split('/')[1]}`);
+
+          const res = await fetch(`${API_BASE}/api/transcribe`, {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!res.ok) throw new Error('Transcription failed');
+
+          const data = await res.json();
+          if (data.text) {
+            setMemo(data.text);
+          }
+        } catch (e) {
+          console.error("Transcription error:", e);
+          alert("음성을 텍스트로 변환하는 데 실패했습니다.");
+        } finally {
+          setLoading(false);
+        }
       };
       mediaRecorder.stop();
       setIsRecording(false);
       setIsFinished(true);
     } catch (e) {
-      console.error("녹음 종료 오류:", e);
+      console.error("Recording stop error:", e);
     }
   };
 
-  /* ── 모범답안 ─────────────────────────── */
+  /* ── GPT Model Answer Logic ──────────── */
   const modelAnswerPrompt = (q) => `
 You are an OPIC rater and coach.
 Write a model answer in English for the prompt below at IM2–IH level.
@@ -467,39 +397,68 @@ ${q}
 
   const fetchBestAnswerFromGPT = async () => {
     if (!question.trim()) return alert("질문이 먼저 필요해요!");
-    const res = await fetch(`${API_BASE}/ask`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: modelAnswerPrompt(question) }),
-    });
-    const data = await res.json();
-    const answer = (data?.answer || "").trim();
-    if (answer) {
-      setMemo(
-        (prev) => prev + `\n\n\n➡️ GPT 모범답안:\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${answer}`
-      );
-    } else {
-      alert("모범답안 생성 실패");
+    setLoadingText("모범답안을 생성 중입니다...");
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/ask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: modelAnswerPrompt(question) }),
+      });
+      const data = await res.json();
+      const answer = (data?.answer || "").trim();
+      if (answer) {
+        setMemo(
+          (prev) => prev + `\n\n\n➡️ AI 모범답안:\n\n${answer}`
+        );
+      } else {
+        alert("모범답안 생성 실패");
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
+  /* ── Save to History Logic ───────────── */
   const handleSave = () => {
     if (!memo.trim()) return alert("📝 답변을 먼저 입력해주세요!");
     const saved = JSON.parse(localStorage.getItem(LS.history) || "[]");
+
+    const separator = "➡️ AI 모범답안:";
     const newEntry = {
       question,
-      memo: memo.split("➡️ GPT 모범답안:")[0].trim(),
-      gptAnswer: memo.includes("➡️ GPT 모범답안:")
-        ? memo.split("➡️ GPT 모범답안:")[1].trim()
+      memo: memo.split(separator)[0].trim(),
+      gptAnswer: memo.includes(separator)
+        ? memo.split(separator)[1].trim()
         : "",
     };
     localStorage.setItem(LS.history, JSON.stringify([...saved, newEntry]));
     alert("저장되었습니다!");
   };
 
-  /* ── 렌더 ─────────────────────────────── */
+  /* ── Render Method ───────────────────── */
   return (
     <>
+      {showScrollTop && (
+        <button
+          onClick={scrollToTop}
+          className="scroll-btn scroll-to-top-btn"
+          title="맨 위로"
+        >
+          <i className="fas fa-arrow-up"></i>
+        </button>
+      )}
+
+      {showScrollBottom && (
+        <button
+          onClick={scrollToBottom}
+          className="scroll-btn scroll-to-bottom-btn"
+          title="맨 아래로"
+        >
+          <i className="fas fa-arrow-down"></i>
+        </button>
+      )}
+
       {loading && (
         <div className="loading-overlay">
           <div className="loading-logo-reveal">
@@ -513,7 +472,7 @@ ${q}
                 </span>
               ))}
             </h1>
-            <p>AI가 맞춤형 질문을 생성중입니다...</p>
+            <p>{loadingText}</p>
           </div>
         </div>
       )}
@@ -543,7 +502,6 @@ ${q}
             </h2>
 
             <div className="survey-grid">
-              {/* ... select 박스들은 그대로 ... */}
               <div className="field">
                 <label>레벨</label>
                 <select
@@ -563,7 +521,8 @@ ${q}
                   onChange={(e) => { setResidence(e.target.value); localStorage.setItem(LS.residence, e.target.value); }}
                 >
                   <option value="">(선택)</option>
-                  {SURVEY.residenceOptions.map((x) => (<option key={x} value={x}>{x}</option>))}
+                  {SURVEY.residenceOptions.map((x) => (<option key={x} value={x}>{x}</option>
+                  ))}
                 </select>
               </div>
 
@@ -591,7 +550,6 @@ ${q}
             </div>
 
             <div className="topics">
-              {/* ... 토픽 버튼들은 그대로 ... */}
               <div className="topics-head">Topics (multi-select)</div>
               <div className="chip-row">
                 {SURVEY.topics.map((t) => {
@@ -620,14 +578,12 @@ ${q}
 
             <div className="actions">
               <button className="btn ghost" onClick={() => setUi("start")}>뒤로</button>
-              {/* 👇 이 버튼의 onClick 로직이 최종 수정되었습니다. */}
               <button
                 className="btn primary"
                 disabled={loading}
-                onClick={async () => {
-                  setLoading(true);
-                  await ensureQuestionBank();
-                  await runOne();
+                onClick={() => {
+                  setQuestionBank([]);
+                  setQuestion("");
                   setUi("practice");
                 }}
               >
@@ -640,50 +596,34 @@ ${q}
 
       {serverReady && ui === 'practice' && (
         <div className="App started">
-          <h2>오늘의 질문</h2>
+          <h2>{question}</h2>
           <h3>남은 시간: {timeLeft}초</h3>
 
           <div style={{ position: "relative", width: 360, height: 360, marginTop: 16 }}>
             <video
               ref={videoRef}
+              src="/avatar.mp4"
+              muted
               playsInline
-              autoPlay
               style={{ position: "absolute", inset: 0, width: "100%", height: "100%", borderRadius: 16, objectFit: "cover" }}
-              onLoadedData={() => setVideoReady(true)}
             />
-            {!videoReady && (
-              <div
-                style={{
-                  position: "absolute", inset: 0, borderRadius: 16,
-                  background: `center/cover no-repeat url(${process.env.REACT_APP_AVATAR_IMAGE_URL || ""})`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}
-              >
-                <div style={{
-                  width: 120, height: 12, borderRadius: 6,
-                  background: "linear-gradient(90deg, #223 0%, #334 50%, #223 100%)",
-                  animation: "shimmer 1.2s infinite linear",
-                }} />
-              </div>
-            )}
+            <audio ref={audioRef} />
           </div>
 
           <button
             className="btn primary"
             onClick={() => {
-              const v = videoRef.current;
-              if (!v) return;
-              if (v.srcObject) v.play().catch(() => { });
-              else { v.currentTime = 0; v.play().catch(() => { }); }
+              videoRef.current?.play();
+              audioRef.current?.play();
             }}
             style={{ marginTop: 12 }}
           >
-            ▶ 다시 보기
+            ▶ 다시 듣기
           </button>
 
           {!isRecording ? (
-            <button onClick={startRecording} style={{ marginTop: 16 }}>
-              <i className="fas fa-microphone"></i> 녹음 시작
+            <button onClick={startRecording} disabled={!timerRunning} style={{ marginTop: 16 }}>
+              <i className="fas fa-microphone"></i> {timerRunning ? '답변 녹음 시작' : '질문 듣고 답변하세요'}
             </button>
           ) : (
             <button onClick={stopRecording} style={{ marginTop: 16 }}>
@@ -698,10 +638,7 @@ ${q}
           )}
 
           <button
-            onClick={async () => {
-              setLoading(true);
-              await runOne();
-            }}
+            onClick={runOne}
             disabled={loading}
             style={{ marginTop: 16 }}
           >
@@ -721,8 +658,8 @@ ${q}
 
           {isFinished && (
             <>
-              <button onClick={fetchBestAnswerFromGPT}>
-                <i className="fas fa-magic"></i> 모범답안 요청하기
+              <button onClick={fetchBestAnswerFromGPT} disabled={loading}>
+                <i className="fas fa-magic"></i> {loading ? '생성중...' : '모범답안 요청하기'}
               </button>
               <button onClick={handleSave}>
                 <i className="fas fa-floppy-disk"></i> 질문 + 메모 저장
@@ -730,7 +667,12 @@ ${q}
               <button
                 onClick={() => {
                   const history = JSON.parse(localStorage.getItem(LS.history) || "[]");
+                  if (history.length === 0) {
+                    alert("저장된 질문이 없습니다.");
+                    return;
+                  }
                   setSavedHistory(history);
+                  setReviewMode('latest');
                   setUi("review");
                 }}
               >
@@ -748,62 +690,89 @@ ${q}
       )}
 
       {serverReady && ui === 'review' && (
-        <div className="App started review-mode">
-          <h2>
-            <i className="fas fa-book-journal-whills" style={{ color: "#4e47d1", marginRight: 10 }}></i>
-            저장된 질문과 답변
-          </h2>
-
-          <button onClick={async () => { setUi("practice"); await runOne(); setIsFinished(false); }}>
-            <i className="fas fa-arrow-left"></i> 다른 문제 풀기
-          </button>
-
-          {savedHistory.map((item, index) => (
-            <div
-              key={index}
-              className="question-block"
-              style={{
-                width: "80%",
-                minHeight: 120,
-                margin: "20px auto",
-                padding: 20,
-                border: "1px solid #ccc",
-                borderRadius: 10,
-                backgroundColor: "#f9f9f9",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-              }}
-            >
-              <p>
-                <strong>
-                  <i className="fas fa-question-circle" style={{ marginRight: 8, color: "#6c63ff" }}></i>
-                  Q{index + 1}.
-                </strong>
-              </p>
-
-              <button
-                onClick={() => setOpenAnswerIndex(openAnswerIndex === index ? null : index)}
-              >
-                <i className={`fas ${openAnswerIndex === index ? "fa-chevron-up" : "fa-comment-dots"}`}></i>
-                &nbsp;{openAnswerIndex === index ? "답변 숨기기" : "답변 보기"}
-              </button>
-
-              {openAnswerIndex === index && (
-                <>
-                  <p style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
-                    💬 <em>{item.memo}</em>
-                  </p>
-                  {item.gptAnswer && (
-                    <div className="gpt-answer-box">
-                      <strong>➡️ GPT 모범답안</strong>
-                      <hr />
-                      <em>{item.gptAnswer}</em>
+        reviewMode === 'latest' ? (
+          <div className="App started review-latest-view">
+            {savedHistory.length > 0 && (() => {
+              const latestItem = savedHistory[savedHistory.length - 1];
+              return (
+                <div className="question-block">
+                  <div className="review-header">
+                    <div className="review-header-left">
+                      <i className="fas fa-sparkles"></i>
+                      <h3>최근 복습 질문</h3>
                     </div>
-                  )}
-                </>
-              )}
+                    <span className="latest-badge">LATEST</span>
+                  </div>
+
+                  <div className="review-content">
+                    <p className="latest-review-question"><strong>{latestItem.question}</strong></p>
+                    <div className="answer-content">
+                      <p style={{ whiteSpace: "pre-wrap" }}>💬 <em>{latestItem.memo}</em></p>
+                      {latestItem.gptAnswer && (
+                        <div className="gpt-answer-box">
+                          <strong>➡️ AI 모범답안</strong>
+                          <em>{latestItem.gptAnswer}</em>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+            <div className="review-actions">
+              <button onClick={() => { setReviewMode('list'); setOpenAnswerIndex(null); }}>
+                <i className="fas fa-list-ul"></i> 전체 목록 보기
+              </button>
+              <button onClick={() => setUi("practice")}>
+                <i className="fas fa-arrow-left"></i> 다른 문제 풀기
+              </button>
             </div>
-          ))}
-        </div>
+          </div>
+        ) : (
+          <div className="App started review-mode">
+            <h2>
+              <i className="fas fa-book-journal-whills" style={{ color: "#4e47d1", marginRight: 10 }}></i>
+              저장된 질문과 답변
+            </h2>
+
+            <button onClick={() => setUi("practice")}>
+              <i className="fas fa-arrow-left"></i> 다른 문제 풀기
+            </button>
+
+            {savedHistory.slice().reverse().map((item, index) => (
+              <div key={index} className="question-block">
+                <p>
+                  <strong>
+                    <i className="fas fa-question-circle" style={{ marginRight: 8, color: "#6c63ff" }}></i>
+                    Q{savedHistory.length - index}. {item.question}
+                  </strong>
+                </p>
+
+                <button
+                  onClick={() => setOpenAnswerIndex(openAnswerIndex === index ? null : index)}
+                  className={`review-toggle-btn ${openAnswerIndex === index ? 'open' : ''}`}
+                >
+                  <i className={`fas ${openAnswerIndex === index ? "fa-chevron-up" : "fa-comment-dots"}`}></i>
+                  &nbsp;{openAnswerIndex === index ? "답변 숨기기" : "답변 보기"}
+                </button>
+
+                {openAnswerIndex === index && (
+                  <div className="answer-content">
+                    <p style={{ whiteSpace: "pre-wrap" }}>
+                      💬 <em>{item.memo}</em>
+                    </p>
+                    {item.gptAnswer && (
+                      <div className="gpt-answer-box">
+                        <strong>➡️ AI 모범답안</strong>
+                        <em>{item.gptAnswer}</em>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )
       )}
     </>
   );
