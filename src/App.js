@@ -407,7 +407,7 @@ Generate 20 OPIC-style interview questions in English.
     if (!serverReady) return;
     if (ui === "start" || ui === "survey") {
       ensureQuestionBank();
-      queuePrefetch(3);
+      queuePrefetch(5);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverReady, ui]);
@@ -543,6 +543,7 @@ ${q}
             </h2>
 
             <div className="survey-grid">
+              {/* ... select 박스들은 그대로 ... */}
               <div className="field">
                 <label>레벨</label>
                 <select
@@ -590,6 +591,7 @@ ${q}
             </div>
 
             <div className="topics">
+              {/* ... 토픽 버튼들은 그대로 ... */}
               <div className="topics-head">Topics (multi-select)</div>
               <div className="chip-row">
                 {SURVEY.topics.map((t) => {
@@ -618,6 +620,7 @@ ${q}
 
             <div className="actions">
               <button className="btn ghost" onClick={() => setUi("start")}>뒤로</button>
+              {/* 👇 이 버튼의 onClick 로직이 최종 수정되었습니다. */}
               <button
                 className="btn primary"
                 disabled={loading}
