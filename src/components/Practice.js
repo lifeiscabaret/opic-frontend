@@ -12,11 +12,6 @@ const FALLBACK_QUESTIONS = [
 // 여성 음성 고정
 const TTS_VOICE = "shimmer";
 
-// 아바타 자산 경로 (있으면 사용, 없으면 자동 무시)
-const AVATAR_MP4 = `${process.env.PUBLIC_URL || ""}/avatar.mp4`;
-const AVATAR_WEBM = `${process.env.PUBLIC_URL || ""}/avatar.webm`;
-const AVATAR_POSTER = `${process.env.PUBLIC_URL || ""}/avatar.jpg`;
-
 /** 현재 설문 선택값 시그니처(필요시 로컬 프리페치 검증에 사용 가능) */
 function getProfileSignature() {
     const level = localStorage.getItem(LS.level) || "";
@@ -48,7 +43,7 @@ function Practice({ setUi, setLoading, setLoadingText, setSavedHistory }) {
     const ttsReqIdRef = useRef(0); // TTS race guard
     const ttsCacheRef = useRef(new Map()); // TTS cache: text -> objectURL
 
-    // “비디오 먼저 허용” 안내 오버레이를 위한 상태/참조
+    // “비디오 먼저 허용” 안내 오버레이 용
     const pendingAudioRef = useRef(null);
     const [needVideoGesture, setNeedVideoGesture] = useState(false);
 
@@ -56,7 +51,7 @@ function Practice({ setUi, setLoading, setLoadingText, setSavedHistory }) {
     const [questionBank, setQuestionBank] = useState([]);
     const [bankLoading, setBankLoading] = useState(false);
 
-    /** ---------- 오디오/비디오 재생 (아바타 우선) ---------- */
+    /** ---------- 오디오/비디오 재생 (아바타 먼저) ---------- */
     const playAudioUrl = useCallback(async (audioUrl) => {
         const a = audioRef.current;
         const v = videoRef.current;
@@ -74,17 +69,17 @@ function Practice({ setUi, setLoading, setLoadingText, setSavedHistory }) {
             if (a && !a.paused && !a.ended) v.play().catch(() => { });
         };
 
-        // 비디오 준비: 화면 보장
+        // 비디오 준비(화면 보장)
         v.muted = true;
         v.playsInline = true;
         v.preload = "auto";
         v.currentTime = 0;
 
-        // 1) 비디오가 반드시 먼저 시작되어야 함(화면 보장)
         try {
+            // 1) 비디오부터 재생 시도 (브라우저 자동재생 정책 회피)
             await v.play();
         } catch {
-            // 자동재생 제한/코덱 등으로 실패 → 사용자 제스처 유도
+            // 자동재생 제한/코덱 문제 → 사용자 제스처 유도
             pendingAudioRef.current = audioUrl;
             setNeedVideoGesture(true);
             return;
@@ -165,13 +160,12 @@ Reference profile (for light personalization, but NEVER to introduce off-topic q
 
     /** ---------- 다음 질문 하나 꺼내기 ---------- */
     const takeOneFromBank = useCallback(async () => {
-        // 은행 비어있으면 바로 배치 채우고 첫 개소비
+        // 은행 비어있으면 바로 배치 채우고 첫 소비
         if (questionBank.length === 0 && !bankLoading) {
             const batch = await appendNewBatch();
             if (Array.isArray(batch) && batch.length > 0) {
                 const first = batch[0];
-                // 상태에는 이미 들어갔으므로 첫 개만 소비
-                setQuestionBank((prev) => prev.slice(1));
+                setQuestionBank((prev) => prev.slice(1)); // 첫 개 소비
                 return first;
             }
             return "";
@@ -184,8 +178,7 @@ Reference profile (for light personalization, but NEVER to introduce off-topic q
                     return [];
                 }
                 const [q, ...rest] = current;
-                // 미리 채워두기
-                if (rest.length < 5 && !bankLoading) appendNewBatch();
+                if (rest.length < 5 && !bankLoading) appendNewBatch(); // 미리 채우기
                 resolve(q);
                 return rest;
             });
@@ -295,7 +288,8 @@ Reference profile (for light personalization, but NEVER to introduce off-topic q
         try {
             // ① 은행 비어있다면: Fallback 즉시 표출 + TTS
             if (questionBank.length === 0 && !bankLoading) {
-                const fb = FALLBACK_QUESTIONS[Math.floor(Math.random() * FALLBACK_QUESTIONS.length)];
+                const fb =
+                    FALLBACK_QUESTIONS[Math.floor(Math.random() * FALLBACK_QUESTIONS.length)];
                 setQuestion(fb);
 
                 // TTS race guard & 미디어 리셋
@@ -310,7 +304,6 @@ Reference profile (for light personalization, but NEVER to introduce off-topic q
                     videoRef.current.currentTime = 0;
                 }
 
-                // Fallback TTS (캐시 활용)
                 const cached = ttsCacheRef.current.get(fb);
                 if (cached) {
                     if (id === ttsReqIdRef.current) await playAudioUrl(cached);
@@ -338,7 +331,7 @@ Reference profile (for light personalization, but NEVER to introduce off-topic q
                 return;
             }
 
-            // 은행에 이미 있으면 그냥 정상 흐름
+            // 은행에 이미 있으면 정상 흐름
             await runNextTurn();
         } catch (e) {
             console.error("runFirstFast failed", e);
@@ -364,7 +357,7 @@ Reference profile (for light personalization, but NEVER to introduce off-topic q
                     setQuestionBank(obj.data);
                 }
             }
-        } catch (_) { }
+        } catch { }
         localStorage.removeItem("prefetchedBatch");
 
         // 첫 질문은 빠르게: Fallback 즉시 + 백그라운드 배치
@@ -389,7 +382,9 @@ Reference profile (for light personalization, but NEVER to introduce off-topic q
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: { echoCancellation: true, noiseSuppression: true },
             });
-            const preferredMime = MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : "audio/webm";
+            const preferredMime = MediaRecorder.isTypeSupported("audio/mp4")
+                ? "audio/mp4"
+                : "audio/webm";
             setRecMime(preferredMime);
             const recorder = new MediaRecorder(stream, { mimeType: preferredMime });
             const chunks = [];
@@ -509,10 +504,10 @@ ${question}
             <div style={{ position: "relative", width: 360, height: 360, marginTop: 16 }}>
                 <video
                     ref={videoRef}
+                    src="/avatar.mp4" // public/avatar.mp4
                     muted
                     playsInline
                     preload="auto"
-                    poster={AVATAR_POSTER}
                     style={{
                         position: "absolute",
                         inset: 0,
@@ -522,11 +517,7 @@ ${question}
                         objectFit: "cover",
                         background: "#000",
                     }}
-                >
-                    <source src={AVATAR_WEBM} type="video/webm" />
-                    <source src={AVATAR_MP4} type="video/mp4" />
-                </video>
-
+                />
                 <audio ref={audioRef} />
 
                 {needVideoGesture && (
@@ -542,7 +533,7 @@ ${question}
                         }}
                         onClick={async () => {
                             try {
-                                await videoRef.current.play();
+                                await videoRef.current.play(); // 사용자 제스처로 비디오 허용
                                 setNeedVideoGesture(false);
                                 const url = pendingAudioRef.current;
                                 if (url) {
@@ -572,11 +563,12 @@ ${question}
 
             {!isRecording ? (
                 <button onClick={startRecording} disabled={!timerRunning} style={{ marginTop: 16 }}>
-                    <i className="fas fa-microphone"></i> {timerRunning ? "답변 녹음 시작" : "질문 듣고 답변하세요"}
+                    <i className="fa-solid fa-microphone" aria-hidden="true"></i>{" "}
+                    {timerRunning ? "답변 녹음 시작" : "질문 듣고 답변하세요"}
                 </button>
             ) : (
                 <button onClick={stopRecording} style={{ marginTop: 16 }}>
-                    <i className="fas fa-stop-circle"></i> 녹음 정지
+                    <i className="fa-solid fa-circle-stop" aria-hidden="true"></i> 녹음 정지
                 </button>
             )}
 
@@ -587,7 +579,8 @@ ${question}
             )}
 
             <button onClick={runNextTurn} disabled={bankLoading} style={{ marginTop: 16 }}>
-                <i className="fas fa-shuffle"></i> {bankLoading ? "새 질문 로딩…" : "다른 질문 받기"}
+                <i className="fa-solid fa-shuffle" aria-hidden="true"></i>{" "}
+                {bankLoading ? "새 질문 로딩…" : "다른 질문 받기"}
             </button>
 
             <div style={{ marginTop: 40, width: "100%", maxWidth: "600px" }}>
@@ -603,20 +596,25 @@ ${question}
             {isFinished && (
                 <>
                     <button onClick={fetchBestAnswerFromGPT}>
-                        <i className="fas fa-magic"></i> 모범답안 요청하기
+                        <i className="fa-solid fa-wand-magic" aria-hidden="true"></i> 모범답안 요청하기
                     </button>
                     <button onClick={handleSave}>
-                        <i className="fas fa-floppy-disk"></i> 질문 + 메모 저장
+                        <i className="fa-solid fa-floppy-disk" aria-hidden="true"></i> 질문 + 메모 저장
                     </button>
                     <button onClick={handleGoToReview}>
-                        <i className="fas fa-folder-open"></i> 저장된 질문/답변 보기
+                        <i className="fa-solid fa-folder-open" aria-hidden="true"></i> 저장된 질문/답변 보기
                     </button>
                 </>
             )}
 
             <div className="practice-actions">
-                <button type="button" className="btn-reset" onClick={() => setUi("survey")} title="설문 다시하기">
-                    <i className="fas fa-arrow-left icon-nudge" aria-hidden="true"></i> 설문 다시하기
+                <button
+                    type="button"
+                    className="btn-reset"
+                    onClick={() => setUi("survey")}
+                    title="설문 다시하기"
+                >
+                    <i className="fa-solid fa-arrow-left icon-nudge" aria-hidden="true"></i> 설문 다시하기
                 </button>
             </div>
         </div>
