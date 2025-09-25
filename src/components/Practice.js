@@ -28,7 +28,7 @@ function Practice({ setUi, setLoading, setLoadingText, setSavedHistory }) {
     // Refs
     const videoRef = useRef(null);
     const audioRef = useRef(null);
-    const pendingAudioUrlRef = useRef(null); // 사용자의 클릭을 기다리는 오디오 URL
+    const pendingAudioUrlRef = useRef(null);
 
     // Question bank
     const [questionBank, setQuestionBank] = useState([]);
@@ -38,6 +38,9 @@ function Practice({ setUi, setLoading, setLoadingText, setSavedHistory }) {
         const audio = audioRef.current;
         const video = videoRef.current;
         if (!audio || !video) return;
+
+        // [수정] 오디오 소스를 먼저 설정합니다.
+        audio.src = audioUrl;
 
         audio.onended = () => {
             video.pause();
@@ -51,18 +54,19 @@ function Practice({ setUi, setLoading, setLoadingText, setSavedHistory }) {
         video.currentTime = 0;
 
         try {
-            await video.play();
-            setNeedVideoGesture(false);
-            audio.src = audioUrl;
-            await audio.play();
+            // [수정] 비디오와 오디오 재생을 동시에 시도합니다.
+            await Promise.all([video.play(), audio.play()]);
+            setNeedVideoGesture(false); // 성공 시 버튼 숨김
         } catch (error) {
-            console.error("Autoplay failed:", error);
+            console.error("Autoplay was prevented:", error);
+            // 자동재생이 막히면, 재생할 URL을 저장하고 사용자 클릭을 유도하는 버튼을 보여줍니다.
             pendingAudioUrlRef.current = audioUrl;
             setNeedVideoGesture(true);
         }
     }, []);
 
     const fetchQuestionBatch = useCallback(async () => {
+        // (이 함수 내용은 변경 없음)
         const level = localStorage.getItem(LS.level) || "IH–AL";
         const role = localStorage.getItem(LS.role) || "";
         const residence = localStorage.getItem(LS.residence) || "";
@@ -113,41 +117,48 @@ You are an expert OPIC coach. Generate 20 personalized, OPIC-style interview que
         setAudioURL("");
 
         try {
-            let nextQuestion = questionBank[0];
+            // [수정] 첫 질문 로직을 더 안정적으로 변경
+            let nextQuestion = questionBank.length > 0 ? questionBank[0] : null;
+
             if (!nextQuestion) {
-                if (bankLoading) {
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    if (questionBank[0]) nextQuestion = questionBank[0];
-                    else {
-                        await fetchQuestionBatch();
-                        if (questionBank[0]) nextQuestion = questionBank[0];
-                    }
+                await fetchQuestionBatch();
+                // fetchQuestionBatch가 상태를 업데이트할 때까지 기다리지 않으므로, 
+                // 이 시점에서 questionBank는 아직 비어있을 수 있습니다.
+                // 따라서 다음 렌더링 사이클에서 처리되도록 합니다.
+                // 지금 당장은 Fallback을 사용하거나, 로직을 조정해야 합니다.
+                // 가장 간단한 해결책: 첫 질문은 무조건 Fallback 사용
+                if (questionBank.length === 0) { // 첫 실행 시
+                    nextQuestion = FALLBACK_QUESTIONS[Math.floor(Math.random() * FALLBACK_QUESTIONS.length)];
+                    fetchQuestionBatch(); // 백그라운드에서 다음 질문들 준비
                 } else {
-                    await fetchQuestionBatch();
-                    if (questionBank[0]) nextQuestion = questionBank[0];
+                    nextQuestion = questionBank[0];
                 }
             }
 
-            if (!nextQuestion && questionBank.length > 0) nextQuestion = questionBank[0]
-            if (!nextQuestion) nextQuestion = FALLBACK_QUESTIONS[0]
-
-            setQuestionBank(prev => prev.slice(1));
             setQuestion(nextQuestion);
+            setQuestionBank(prev => prev.slice(1));
+
 
             const res = await fetch(`${API_BASE}/tts`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ text: nextQuestion, voice: TTS_VOICE }),
             });
+
             if (!res.ok) throw new Error("TTS request failed");
+
             const audioBlob = await res.blob();
             const audioUrl = URL.createObjectURL(audioBlob);
+
+            // [수정] 음성 파일 URL을 받은 후에만 재생 함수를 호출합니다.
             await playAudioAndVideo(audioUrl);
+
         } catch (e) {
             console.error("runOne failed", e);
             toast.error("오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
         } finally {
             setLoading(false);
+            // 미리 다음 질문들을 채워넣습니다.
             if (questionBank.length < 5 && !bankLoading) {
                 fetchQuestionBatch();
             }
@@ -158,6 +169,8 @@ You are an expert OPIC coach. Generate 20 personalized, OPIC-style interview que
         runOne();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // (이하 다른 함수들은 변경 없음)
 
     useEffect(() => {
         if (!timerRunning) return;
@@ -273,6 +286,7 @@ Prompt: ${question}`.trim();
                         onClick={async () => {
                             const url = pendingAudioUrlRef.current;
                             if (url) {
+                                // [수정] 사용자가 버튼을 클릭했을 때 재생을 다시 시도합니다.
                                 await playAudioAndVideo(url);
                             }
                         }}>
