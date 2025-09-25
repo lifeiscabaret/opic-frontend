@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import "./App.css";
-import "@fortawesome/fontawesome-free/css/all.min.css";
 import { Toaster } from "react-hot-toast";
 
 // 컴포넌트 임포트

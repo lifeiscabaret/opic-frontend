@@ -20,7 +20,6 @@ body {
 
 .start-title {
   font-size: clamp(100px, 22vw, 240px);
-  /* [수정됨] 웹 화면 글꼴 크기 증가 */
   font-weight: bold;
   background: linear-gradient(to bottom, #ffffff, #aaaaaa);
   -webkit-background-clip: text;
@@ -74,8 +73,6 @@ body {
 .App,
 .App.started {
   width: 100%;
-  max-height: none;
-  overflow-y: visible;
   padding: 40px 20px 120px;
   display: flex;
   flex-direction: column;
@@ -115,7 +112,6 @@ button:disabled {
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
-/* 질문 텍스트 */
 h2 {
   margin-top: 20px;
   font-size: 24px;
@@ -131,7 +127,6 @@ h3 {
   color: #bdc1d1;
 }
 
-/* 텍스트 입력 영역 */
 textarea {
   padding: 12px 16px;
   font-size: 16px;
@@ -147,7 +142,6 @@ textarea {
   box-sizing: border-box;
 }
 
-/* 질문/답변 박스 */
 .question-block {
   width: 100%;
   max-width: 800px;
@@ -197,8 +191,6 @@ textarea {
   }
 }
 
-
-/* 모범답안 박스 */
 .gpt-answer-box {
   background-color: #eef2ff;
   border-left: 4px solid #6366f1;
@@ -209,7 +201,6 @@ textarea {
   white-space: pre-wrap;
 }
 
-/* AI 모범답안 제목 아래에 파란색 구분선 추가 */
 .gpt-answer-box strong {
   display: block;
   font-weight: 600;
@@ -218,8 +209,6 @@ textarea {
   border-bottom: 1px solid #c7d2fe;
 }
 
-
-/* ===== Review 화면 스타일 ===== */
 .review-mode,
 .review-latest-view {
   background-color: #f1f5f9;
@@ -255,7 +244,6 @@ textarea {
   margin-top: 20px;
 }
 
-/* ===== OPIC Survey 레이아웃 & 토픽 버튼 커스터마이즈 ===== */
 .survey-wrap {
   min-height: 100vh;
   padding: 40px 16px;
@@ -275,15 +263,9 @@ textarea {
 .survey-title {
   margin: 0 0 16px 0;
   display: flex;
-  /* 아이콘과 텍스트 한 줄 정렬 */
   align-items: center;
-  /* 세로 중앙 */
   justify-content: center;
-  /* 가로 중앙 */
   gap: 10px;
-  /* 아이콘과 텍스트 간격 */
-  text-align: center;
-  /* 텍스트도 중앙 정렬 */
 }
 
 .survey-grid {
@@ -374,7 +356,6 @@ textarea {
   border: 1px solid #fff;
 }
 
-/* === practice 하단 버튼 영역 === */
 .practice-actions {
   margin: 28px 0 10px;
   display: flex;
@@ -410,7 +391,6 @@ button.btn-reset:hover {
   }
 }
 
-/* ===== 최종 로딩 오버레이 (텍스트 순차 애니메이션) ===== */
 .loading-overlay {
   position: fixed;
   inset: 0;
@@ -444,7 +424,6 @@ button.btn-reset:hover {
   animation: fadeInText 2s infinite;
 }
 
-/* ===== 스크롤 버튼들 ===== */
 .scroll-btn {
   position: fixed;
   bottom: 30px;
@@ -501,8 +480,6 @@ button.btn-reset:hover {
   }
 }
 
-
-/* ===== 반응형 정리 ===== */
 @media screen and (max-width: 768px) {
 
   .App,
@@ -549,7 +526,6 @@ button.btn-reset:hover {
 
   .start-title {
     font-size: clamp(60px, 25vw, 120px);
-    /* [수정됨] 모바일 화면 글꼴 크기 증가 */
   }
 
   .start-subtitle {
@@ -576,44 +552,33 @@ button.btn-reset:hover {
   }
 }
 
-/* ===== [추가됨] Review 화면 카드 디자인 개선 ===== */
-
-/* 카드 헤더 컨테이너 */
 .review-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   background-color: #f8fafc;
-  /* 은은한 배경색 */
   padding: 16px 24px;
   border-bottom: 1px solid #e2e8f0;
-  /* 얇은 구분선 */
 }
 
-/* 헤더 왼쪽 (아이콘 + 제목) */
 .review-header-left {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-/* 헤더 아이콘 스타일 */
 .review-header .fas.fa-sparkles {
   color: #6366f1;
-  /* 앱의 메인 컬러 */
   font-size: 18px;
 }
 
-/* 헤더 제목 스타일 */
 .review-header h3 {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
   color: #334155;
-  /* 너무 진하지 않은 세련된 검은색 */
 }
 
-/* 'LATEST' 뱃지 스타일 */
 .latest-badge {
   background-color: #eef2ff;
   color: #4f46e5;
@@ -624,49 +589,27 @@ button.btn-reset:hover {
   letter-spacing: 0.5px;
 }
 
-/* 질문과 답변이 들어가는 실제 콘텐츠 영역 */
 .review-content {
   padding: 24px;
 }
 
-/* OPIC Survey 제목 정확히 가운데 정렬 */
-.survey-card .survey-title {
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 10px;
-  /* 아이콘과 텍스트 간격 */
-  margin: 0 auto 16px;
-  text-align: center;
-}
-
-/* ===== Font Awesome 아이콘이 전역 폰트에 덮여 깨지는 문제 방지 ===== */
+/* [수정됨] Font Awesome 아이콘 깨짐 문제 해결 */
 .fa,
 .fas,
 .far,
-.fal,
-.fab,
 .fa-solid,
-.fa-regular,
-.fa-brands {
-  font-family: "Font Awesome 6 Free", "Font Awesome 5 Free",
-    "Font Awesome 6 Brands", "Font Awesome 5 Brands" !important;
-  font-style: normal;
-  text-rendering: auto;
-}
-
-.fas,
-.fa-solid {
-  font-weight: 900 !important;
-}
-
-.far,
 .fa-regular {
-  font-weight: 400 !important;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+  display: inline-block;
+  font-style: normal;
+  font-variant: normal;
+  text-rendering: auto;
+  line-height: 1;
 }
 
-.fab,
-.fa-brands {
-  font-weight: 400 !important;
+.fa-solid,
+.fas {
+  font-family: 'Font Awesome 6 Free';
+  font-weight: 900;
 }
