@@ -1,17 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+// src/App.js
+import { useEffect, useState } from "react";
 import "./App.css";
 import "@fortawesome/fontawesome-free/css/all.min.css";
-import { Toaster, toast } from 'react-hot-toast'; // react-hot-toast 임포트
+import { Toaster } from "react-hot-toast";
 
 // 컴포넌트 임포트
-import Survey from './components/Survey';
-import Practice from './components/Practice';
-import Review from './components/Review';
+import Survey from "./components/Survey";
+import Practice from "./components/Practice";
+import Review from "./components/Review";
 import LoadingOverlay from "./components/LoadingOverlay";
 import ScrollButtons from "./components/ScrollButtons";
 
 export const API_BASE =
   process.env.REACT_APP_API_BASE_URL || "http://localhost:8080";
+
+// 프로덕션(API_BASE가 /api로 끝남)과 로컬(그렇지 않을 수 있음) 모두에서 동작하도록 헬스체크 URL 보정
+const HEALTH_URL =
+  (API_BASE.endsWith("/api") ? API_BASE.slice(0, -4) : API_BASE) + "/health";
 
 export const LS = {
   level: "opic:level",
@@ -62,7 +67,9 @@ function App() {
   const [ui, setUi] = useState("start");
   const [serverReady, setServerReady] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [loadingText, setLoadingText] = useState("AI가 맞춤형 질문을 생성중입니다...");
+  const [loadingText, setLoadingText] = useState(
+    "AI가 맞춤형 질문을 생성중입니다..."
+  );
 
   // Review 화면으로 전달할 상태
   const [savedHistory, setSavedHistory] = useState([]);
@@ -72,7 +79,7 @@ function App() {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     try {
-      const res = await fetch(`${API_BASE}/health`, { signal: controller.signal });
+      const res = await fetch(HEALTH_URL, { signal: controller.signal });
       if (!res.ok) throw new Error(`Health ${res.status}`);
       return true;
     } catch {
@@ -80,7 +87,7 @@ function App() {
     } finally {
       clearTimeout(timeout);
     }
-  }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -92,23 +99,42 @@ function App() {
       }
       if (mounted) setServerReady(true);
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const renderContent = () => {
     switch (ui) {
-      case 'survey':
+      case "survey":
         return <Survey setUi={setUi} />;
-      case 'practice':
-        return <Practice setUi={setUi} setLoading={setLoading} setLoadingText={setLoadingText} setSavedHistory={setSavedHistory} />;
-      case 'review':
-        return <Review setUi={setUi} savedHistory={savedHistory} setSavedHistory={setSavedHistory} />;
-      case 'start':
+      case "practice":
+        return (
+          <Practice
+            setUi={setUi}
+            setLoading={setLoading}
+            setLoadingText={setLoadingText}
+            setSavedHistory={setSavedHistory}
+          />
+        );
+      case "review":
+        return (
+          <Review
+            setUi={setUi}
+            savedHistory={savedHistory}
+            setSavedHistory={setSavedHistory}
+          />
+        );
+      case "start":
       default:
         return (
           <div className="start-screen">
             <h1 className="start-title">OPIC</h1>
-            <p className="start-subtitle" onClick={() => setUi("survey")} style={{ cursor: "pointer" }}>
+            <p
+              className="start-subtitle"
+              onClick={() => setUi("survey")}
+              style={{ cursor: "pointer" }}
+            >
               Let’s start practice
             </p>
           </div>

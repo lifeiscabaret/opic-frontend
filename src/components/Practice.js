@@ -39,8 +39,8 @@ function Practice({ setUi, setLoading, setLoadingText, setSavedHistory }) {
     // Refs
     const videoRef = useRef(null);
     const audioRef = useRef(null);
-    const didInitRef = useRef(false);      // StrictMode guard
-    const ttsReqIdRef = useRef(0);         // TTS race guard
+    const didInitRef = useRef(false); // StrictMode guard
+    const ttsReqIdRef = useRef(0); // TTS race guard
     const ttsCacheRef = useRef(new Map()); // TTS cache: text -> objectURL
 
     // Question bank
@@ -111,7 +111,11 @@ Reference profile (for light personalization, but NEVER to introduce off-topic q
         const match = raw.match(/\[.*\]/s);
         let arr = [];
         if (match) {
-            try { arr = JSON.parse(match[0]); } catch { arr = []; }
+            try {
+                arr = JSON.parse(match[0]);
+            } catch {
+                arr = [];
+            }
         }
         if (!Array.isArray(arr) || !arr.length) arr = FALLBACK_QUESTIONS;
         return arr.filter(Boolean);
@@ -130,49 +134,58 @@ Reference profile (for light personalization, but NEVER to introduce off-topic q
     }, [fetchQuestionBatchRaw]);
 
     /** ---------- 다음 질문 하나 꺼내기 ---------- */
-    const takeOneFromBank = useCallback(async () => {
-        // 은행 비어있으면 바로 배치 채우고 첫 개소비
-        if (questionBank.length === 0 && !bankLoading) {
-            const batch = await appendNewBatch();
-            if (Array.isArray(batch) && batch.length > 0) {
-                const first = batch[0];
-                // 상태에는 이미 들어갔으므로 첫 개만 소비
-                setQuestionBank((prev) => prev.slice(1));
-                return first;
-            }
-            return "";
-        }
-        // 기존 은행에서 하나 소비
-        return await new Promise((resolve) => {
-            setQuestionBank((current) => {
-                if (current.length === 0) {
-                    resolve("");
-                    return [];
-                }
-                const [q, ...rest] = current;
-                // 미리 채워두기
-                if (rest.length < 5 && !bankLoading) appendNewBatch();
-                resolve(q);
-                return rest;
-            });
-        });
-    }, [appendNewBatch, bankLoading, questionBank.length]);
-
-    /** ---------- 첫 질문: 즉시 Fallback → 병렬 배치 ---------- */
-    const runFirstFast = useCallback(async () => {
-        setLoadingText("AI가 맞춤형 질문을 생성중입니다...");
-        setLoading(true);
-        setTimeLeft(60);
-        setTimerRunning(false);
-        setIsFinished(false);
-        setMemo("");
-        setAudioURL("");
-
-        try {
-            // ① 은행 비어있다면: Fallback 즉시 표출 + TTS
+    const takeOneFromBank = useCallback(
+        async () => {
+            // 은행 비어있으면 바로 배치 채우고 첫 개소비
             if (questionBank.length === 0 && !bankLoading) {
-                const fb = FALLBACK_QUESTIONS[Math.floor(Math.random() * FALLBACK_QUESTIONS.length)];
-                setQuestion(fb);
+                const batch = await appendNewBatch();
+                if (Array.isArray(batch) && batch.length > 0) {
+                    const first = batch[0];
+                    // 상태에는 이미 들어갔으므로 첫 개만 소비
+                    setQuestionBank((prev) => prev.slice(1));
+                    return first;
+                }
+                return "";
+            }
+            // 기존 은행에서 하나 소비
+            return await new Promise((resolve) => {
+                setQuestionBank((current) => {
+                    if (current.length === 0) {
+                        resolve("");
+                        return [];
+                    }
+                    const [q, ...rest] = current;
+                    // 미리 채워두기
+                    if (rest.length < 5 && !bankLoading) appendNewBatch();
+                    resolve(q);
+                    return rest;
+                });
+            });
+        },
+        [appendNewBatch, bankLoading, questionBank.length]
+    );
+
+    /** ---------- 이후 턴: 은행에서 소비 → TTS 병렬 ---------- */
+    const runNextTurn = useCallback(
+        async () => {
+            setLoadingText("AI가 맞춤형 질문을 생성중입니다...");
+            setLoading(true);
+            setTimeLeft(60);
+            setTimerRunning(false);
+            setIsFinished(false);
+            setMemo("");
+            setAudioURL("");
+
+            try {
+                const q = await takeOneFromBank();
+                if (!q) {
+                    toast.error("질문 생성에 실패했습니다. 잠시 후 새로고침 해주세요.");
+                    setLoading(false);
+                    return;
+                }
+
+                // 텍스트 먼저
+                setQuestion(q);
 
                 // TTS race guard & 미디어 리셋
                 const id = ++ttsReqIdRef.current;
@@ -186,133 +199,142 @@ Reference profile (for light personalization, but NEVER to introduce off-topic q
                     videoRef.current.currentTime = 0;
                 }
 
-                // Fallback TTS (캐시 활용)
-                const cached = ttsCacheRef.current.get(fb);
+                // 캐시 우선
+                const cached = ttsCacheRef.current.get(q);
                 if (cached) {
                     if (id === ttsReqIdRef.current) await playAudioUrl(cached);
                 } else {
-                    const r = await fetch(`${API_BASE}/api/tts`, {
+                    const res = await fetch(`${API_BASE}/tts`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: fb, voice: TTS_VOICE }),
+                        body: JSON.stringify({ text: q, voice: TTS_VOICE }),
                     });
-                    if (r.ok) {
-                        const b = await r.blob();
-                        const url = URL.createObjectURL(b);
-                        ttsCacheRef.current.set(fb, url);
-                        if (ttsCacheRef.current.size > 50) {
-                            const firstKey = ttsCacheRef.current.keys().next().value;
-                            URL.revokeObjectURL(ttsCacheRef.current.get(firstKey));
-                            ttsCacheRef.current.delete(firstKey);
-                        }
-                        if (id === ttsReqIdRef.current) await playAudioUrl(url);
+                    if (!res.ok) throw new Error("TTS request failed");
+                    const audioBlob = await res.blob();
+                    const audioUrl = URL.createObjectURL(audioBlob);
+
+                    // LRU 50
+                    ttsCacheRef.current.set(q, audioUrl);
+                    if (ttsCacheRef.current.size > 50) {
+                        const firstKey = ttsCacheRef.current.keys().next().value;
+                        URL.revokeObjectURL(ttsCacheRef.current.get(firstKey));
+                        ttsCacheRef.current.delete(firstKey);
                     }
+
+                    if (id === ttsReqIdRef.current) await playAudioUrl(audioUrl);
                 }
 
-                // ② 동시에 실제 배치 생성(백그라운드)
-                appendNewBatch().catch(() => { });
-                return;
-            }
-
-            // 은행에 이미 있으면 그냥 정상 흐름
-            await runNextTurn();
-        } catch (e) {
-            console.error("runFirstFast failed", e);
-            toast.error("오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
-        } finally {
-            setLoading(false);
-        }
-    }, [appendNewBatch, bankLoading, playAudioUrl, questionBank.length, setLoading, setLoadingText]);
-
-    /** ---------- 이후 턴: 은행에서 소비 → TTS 병렬 ---------- */
-    const runNextTurn = useCallback(async () => {
-        setLoadingText("AI가 맞춤형 질문을 생성중입니다...");
-        setLoading(true);
-        setTimeLeft(60);
-        setTimerRunning(false);
-        setIsFinished(false);
-        setMemo("");
-        setAudioURL("");
-
-        try {
-            const q = await takeOneFromBank();
-            if (!q) {
-                toast.error("질문 생성에 실패했습니다. 잠시 후 새로고침 해주세요.");
-                setLoading(false);
-                return;
-            }
-
-            // 텍스트 먼저
-            setQuestion(q);
-
-            // TTS race guard & 미디어 리셋
-            const id = ++ttsReqIdRef.current;
-            if (audioRef.current) {
-                audioRef.current.pause();
-                audioRef.current.removeAttribute("src");
-                audioRef.current.load();
-            }
-            if (videoRef.current) {
-                videoRef.current.pause();
-                videoRef.current.currentTime = 0;
-            }
-
-            // 캐시 우선
-            const cached = ttsCacheRef.current.get(q);
-            if (cached) {
-                if (id === ttsReqIdRef.current) await playAudioUrl(cached);
-            } else {
-                const res = await fetch(`${API_BASE}/api/tts`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ text: q, voice: TTS_VOICE }),
+                // 다음 1개 미리 캐싱
+                setQuestionBank((bank) => {
+                    if (!bank.length) return bank;
+                    const next = bank[0];
+                    if (next && !ttsCacheRef.current.has(next)) {
+                        fetch(`${API_BASE}/tts`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ text: next, voice: TTS_VOICE }),
+                        })
+                            .then((r) => (r.ok ? r.blob() : Promise.reject()))
+                            .then((b) => {
+                                const url = URL.createObjectURL(b);
+                                ttsCacheRef.current.set(next, url);
+                                if (ttsCacheRef.current.size > 50) {
+                                    const firstKey = ttsCacheRef.current.keys().next().value;
+                                    URL.revokeObjectURL(ttsCacheRef.current.get(firstKey));
+                                    ttsCacheRef.current.delete(firstKey);
+                                }
+                            })
+                            .catch(() => { });
+                    }
+                    return bank;
                 });
-                if (!res.ok) throw new Error("TTS request failed");
-                const audioBlob = await res.blob();
-                const audioUrl = URL.createObjectURL(audioBlob);
-
-                // LRU 50
-                ttsCacheRef.current.set(q, audioUrl);
-                if (ttsCacheRef.current.size > 50) {
-                    const firstKey = ttsCacheRef.current.keys().next().value;
-                    URL.revokeObjectURL(ttsCacheRef.current.get(firstKey));
-                    ttsCacheRef.current.delete(firstKey);
-                }
-
-                if (id === ttsReqIdRef.current) await playAudioUrl(audioUrl);
+            } catch (e) {
+                console.error("runNextTurn failed", e);
+                toast.error("오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+            } finally {
+                setLoading(false);
             }
+        },
+        [playAudioUrl, setLoading, setLoadingText, takeOneFromBank]
+    );
 
-            // 다음 1개 미리 캐싱
-            setQuestionBank((bank) => {
-                if (!bank.length) return bank;
-                const next = bank[0];
-                if (next && !ttsCacheRef.current.has(next)) {
-                    fetch(`${API_BASE}/api/tts`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: next, voice: TTS_VOICE }),
-                    })
-                        .then((r) => (r.ok ? r.blob() : Promise.reject()))
-                        .then((b) => {
+    /** ---------- 첫 질문: 즉시 Fallback → 병렬 배치 ---------- */
+    const runFirstFast = useCallback(
+        async () => {
+            setLoadingText("AI가 맞춤형 질문을 생성중입니다...");
+            setLoading(true);
+            setTimeLeft(60);
+            setTimerRunning(false);
+            setIsFinished(false);
+            setMemo("");
+            setAudioURL("");
+
+            try {
+                // ① 은행 비어있다면: Fallback 즉시 표출 + TTS
+                if (questionBank.length === 0 && !bankLoading) {
+                    const fb =
+                        FALLBACK_QUESTIONS[Math.floor(Math.random() * FALLBACK_QUESTIONS.length)];
+                    setQuestion(fb);
+
+                    // TTS race guard & 미디어 리셋
+                    const id = ++ttsReqIdRef.current;
+                    if (audioRef.current) {
+                        audioRef.current.pause();
+                        audioRef.current.removeAttribute("src");
+                        audioRef.current.load();
+                    }
+                    if (videoRef.current) {
+                        videoRef.current.pause();
+                        videoRef.current.currentTime = 0;
+                    }
+
+                    // Fallback TTS (캐시 활용)
+                    const cached = ttsCacheRef.current.get(fb);
+                    if (cached) {
+                        if (id === ttsReqIdRef.current) await playAudioUrl(cached);
+                    } else {
+                        const r = await fetch(`${API_BASE}/tts`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ text: fb, voice: TTS_VOICE }),
+                        });
+                        if (r.ok) {
+                            const b = await r.blob();
                             const url = URL.createObjectURL(b);
-                            ttsCacheRef.current.set(next, url);
+                            ttsCacheRef.current.set(fb, url);
                             if (ttsCacheRef.current.size > 50) {
                                 const firstKey = ttsCacheRef.current.keys().next().value;
                                 URL.revokeObjectURL(ttsCacheRef.current.get(firstKey));
                                 ttsCacheRef.current.delete(firstKey);
                             }
-                        })
-                        .catch(() => { });
+                            if (id === ttsReqIdRef.current) await playAudioUrl(url);
+                        }
+                    }
+
+                    // ② 동시에 실제 배치 생성(백그라운드)
+                    appendNewBatch().catch(() => { });
+                    return;
                 }
-                return bank;
-            });
-        } catch (e) {
-            console.error("runNextTurn failed", e);
-            toast.error("오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
-        } finally {
-            setLoading(false);
-        }
-    }, [playAudioUrl, setLoading, setLoadingText, takeOneFromBank]);
+
+                // 은행에 이미 있으면 그냥 정상 흐름
+                await runNextTurn();
+            } catch (e) {
+                console.error("runFirstFast failed", e);
+                toast.error("오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+            } finally {
+                setLoading(false);
+            }
+        },
+        [
+            appendNewBatch,
+            bankLoading,
+            playAudioUrl,
+            questionBank.length,
+            setLoading,
+            setLoadingText,
+            runNextTurn, // ← 의존성 정상 표기
+        ]
+    );
 
     /** ---------- 초기 진입 ---------- */
     useEffect(() => {
@@ -386,7 +408,7 @@ Reference profile (for light personalization, but NEVER to introduce off-topic q
                 try {
                     const formData = new FormData();
                     formData.append("audio", audioBlob, `recording.${type.split("/")[1]}`);
-                    const res = await fetch(`${API_BASE}/api/transcribe`, {
+                    const res = await fetch(`${API_BASE}/transcribe`, {
                         method: "POST",
                         body: formData,
                     });
@@ -409,13 +431,14 @@ Reference profile (for light personalization, but NEVER to introduce off-topic q
     }, [mediaRecorder, recMime, setLoading, setLoadingText]);
 
     /** ---------- 모범답안 ---------- */
-    const fetchBestAnswerFromGPT = useCallback(async () => {
-        if (!question.trim()) return toast.error("질문이 먼저 필요해요!");
-        setLoadingText("모범답안을 생성 중입니다...");
-        setLoading(true);
-        try {
-            const targetBand = localStorage.getItem(LS.level) || "IM2–IH";
-            const modelAnswerPrompt = `
+    const fetchBestAnswerFromGPT = useCallback(
+        async () => {
+            if (!question.trim()) return toast.error("질문이 먼저 필요해요!");
+            setLoadingText("모범답안을 생성 중입니다...");
+            setLoading(true);
+            try {
+                const targetBand = localStorage.getItem(LS.level) || "IM2–IH";
+                const modelAnswerPrompt = `
 You are an OPIC rater and coach.
 Write a model answer in English for the prompt at ${targetBand} level.
 
@@ -430,22 +453,24 @@ Prompt:
 ${question}
 `.trim();
 
-            const res = await fetch(`${API_BASE}/ask`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ question: modelAnswerPrompt }),
-            });
-            const data = await res.json();
-            const answer = (data?.answer || "").trim();
-            if (answer) {
-                setMemo((prev) => prev + `\n\n\n➡️ AI 모범답안:\n\n${answer}`);
-            } else {
-                toast.error("모범답안 생성 실패");
+                const res = await fetch(`${API_BASE}/ask`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ question: modelAnswerPrompt }),
+                });
+                const data = await res.json();
+                const answer = (data?.answer || "").trim();
+                if (answer) {
+                    setMemo((prev) => prev + `\n\n\n➡️ AI 모범답안:\n\n${answer}`);
+                } else {
+                    toast.error("모범답안 생성 실패");
+                }
+            } finally {
+                setLoading(false);
             }
-        } finally {
-            setLoading(false);
-        }
-    }, [question, setLoading, setLoadingText]);
+        },
+        [question, setLoading, setLoadingText]
+    );
 
     /** ---------- 저장/리뷰 ---------- */
     const handleSave = useCallback(() => {
@@ -480,14 +505,24 @@ ${question}
                     src="/avatar.mp4"
                     muted
                     playsInline
-                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", borderRadius: 16, objectFit: "cover" }}
+                    style={{
+                        position: "absolute",
+                        inset: 0,
+                        width: "100%",
+                        height: "100%",
+                        borderRadius: 16,
+                        objectFit: "cover",
+                    }}
                 />
                 <audio ref={audioRef} />
             </div>
 
             <button
                 className="btn primary"
-                onClick={() => { videoRef.current?.play(); audioRef.current?.play(); }}
+                onClick={() => {
+                    videoRef.current?.play();
+                    audioRef.current?.play();
+                }}
                 style={{ marginTop: 12 }}
             >
                 ▶ 다시 듣기
@@ -525,14 +560,25 @@ ${question}
 
             {isFinished && (
                 <>
-                    <button onClick={fetchBestAnswerFromGPT}><i className="fas fa-magic"></i> 모범답안 요청하기</button>
-                    <button onClick={handleSave}><i className="fas fa-floppy-disk"></i> 질문 + 메모 저장</button>
-                    <button onClick={handleGoToReview}><i className="fas fa-folder-open"></i> 저장된 질문/답변 보기</button>
+                    <button onClick={fetchBestAnswerFromGPT}>
+                        <i className="fas fa-magic"></i> 모범답안 요청하기
+                    </button>
+                    <button onClick={handleSave}>
+                        <i className="fas fa-floppy-disk"></i> 질문 + 메모 저장
+                    </button>
+                    <button onClick={handleGoToReview}>
+                        <i className="fas fa-folder-open"></i> 저장된 질문/답변 보기
+                    </button>
                 </>
             )}
 
             <div className="practice-actions">
-                <button type="button" className="btn-reset" onClick={() => setUi("survey")} title="설문 다시하기">
+                <button
+                    type="button"
+                    className="btn-reset"
+                    onClick={() => setUi("survey")}
+                    title="설문 다시하기"
+                >
                     <i className="fas fa-arrow-left icon-nudge" aria-hidden="true"></i> 설문 다시하기
                 </button>
             </div>
