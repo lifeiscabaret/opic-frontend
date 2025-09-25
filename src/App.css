@@ -640,3 +640,33 @@ button.btn-reset:hover {
   margin: 0 auto 16px;
   text-align: center;
 }
+
+/* ===== Font Awesome 아이콘이 전역 폰트에 덮여 깨지는 문제 방지 ===== */
+.fa,
+.fas,
+.far,
+.fal,
+.fab,
+.fa-solid,
+.fa-regular,
+.fa-brands {
+  font-family: "Font Awesome 6 Free", "Font Awesome 5 Free",
+    "Font Awesome 6 Brands", "Font Awesome 5 Brands" !important;
+  font-style: normal;
+  text-rendering: auto;
+}
+
+.fas,
+.fa-solid {
+  font-weight: 900 !important;
+}
+
+.far,
+.fa-regular {
+  font-weight: 400 !important;
+}
+
+.fab,
+.fa-brands {
+  font-weight: 400 !important;
+}
