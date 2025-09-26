@@ -39,11 +39,12 @@ AI 기반 OPIc(Oral Proficiency Interview) 시험 대비 웹 애플리케이션�
 <img src="./assets/record.jpg" width="600"/>
 
 ### 모바일 
-<img src="./assets/mobile.jpeg" width="600"/>
+<img src="./assets/mobile.jpeg" width="600"/>re
 
 ### 답변 저장 화면
 <img src="./assets/answer1.png" width="600"/>
 <img src="./assets/answer2.png" width="600"/>
+<img src="./assets/answer3.png" width="600"/>
 
 ---
 

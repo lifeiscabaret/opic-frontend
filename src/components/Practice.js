@@ -20,7 +20,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const looksLikeAutoSwitchMic = (label) =>
     /iphone|continuity|hands-?free|airpods|hfp|car audio/i.test(label || "");
 
-/** STT 업로드 확장자/타입 보정 */
 const guessExtFromMime = (mt) => {
     if (!mt) return "webm";
     if (mt.includes("webm")) return "webm";
@@ -61,12 +60,10 @@ function Practice({ setUi, setLoading, setLoadingText, setSavedHistory }) {
 
         setNeedVideoGesture(false);
 
-        // 오디오 준비
         audio.src = audioUrl;
         audio.preload = "auto";
         audio.load();
 
-        // 비디오 0초로 리셋 (메타데이터 준비 보장)
         const ensureVideoReady = () =>
             new Promise((resolve) => {
                 if (video.readyState >= 1) {
@@ -86,35 +83,30 @@ function Practice({ setUi, setLoading, setLoadingText, setSavedHistory }) {
 
         const startSynced = async () => {
             await ensureVideoReady();
-            // 오디오가 실제로 재생에 들어간 시점(playing)에 비디오 시작 → 싱크 딜레이 제거
+
             const onAudioPlaying = async () => {
                 audio.removeEventListener("playing", onAudioPlaying);
+                video.currentTime = 0;
                 try {
                     await video.play();
                 } catch (e) {
-                    // iOS/모바일 젯처 필요
+                    console.warn("Video play blocked:", e);
                     setNeedVideoGesture(true);
                 }
             };
             audio.addEventListener("playing", onAudioPlaying);
+
             try {
-                // 일부 브라우저에서 여기서 막힐 수 있음
                 await audio.play();
             } catch (err) {
                 pendingAudioUrlRef.current = audioUrl;
                 setNeedVideoGesture(true);
-                // 시각 피드백용 무음 영상
-                try {
-                    await video.play();
-                } catch {
-                    /* no-op */
-                }
             }
         };
 
         await startSynced();
 
-        // 오디오가 끝나면 타이머 시작, 비디오 정지
+        // 오디오가 끝나면 타이머 시작 + 비디오 정지
         audio.onended = () => {
             video.pause();
             setTimeLeft(60);
@@ -184,7 +176,6 @@ You are an expert OPIC coach. Generate 20 personalized, OPIC-style interview que
                     fetchQuestionBatch();
                 } else {
                     if (questionBank.length > 0) {
-                        // 큐에서 하나 꺼내고, 5개 미만이면 프리페치
                         nextQuestion = questionBank[0];
                         setQuestionBank((prev) => prev.slice(1));
                         if (questionBank.length < 5 && !bankLoading) {
@@ -205,7 +196,6 @@ You are an expert OPIC coach. Generate 20 personalized, OPIC-style interview que
                 });
                 if (!res.ok) throw new Error("TTS request failed");
 
-                // 서버가 octet-stream으로 응답하는 경우 타입 보정
                 let audioBlob = await res.blob();
                 if (!audioBlob.type || audioBlob.type === "application/octet-stream") {
                     const ab = await audioBlob.arrayBuffer();
@@ -248,7 +238,6 @@ You are an expert OPIC coach. Generate 20 personalized, OPIC-style interview que
     /* ------------------------------ 녹음 컨트롤 ------------------------------ */
     const startRecording = useCallback(async () => {
         try {
-            // 입력 장치 자동 선택 방지
             let deviceId = localStorage.getItem("OPIC_INPUT_DEVICE_ID") || "";
             try {
                 const devices = await navigator.mediaDevices.enumerateDevices();
@@ -259,9 +248,7 @@ You are an expert OPIC coach. Generate 20 personalized, OPIC-style interview que
                     deviceId = pick.deviceId;
                     localStorage.setItem("OPIC_INPUT_DEVICE_ID", deviceId);
                 }
-            } catch {
-                // 권한 미부여 단계에서는 enumerate 실패 가능 → 무시
-            }
+            } catch { }
 
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
@@ -291,10 +278,8 @@ You are an expert OPIC coach. Generate 20 personalized, OPIC-style interview que
             };
 
             recorder.start();
-            // 첫 조각 0바이트 방지
             await sleep(300);
 
-            // 임시 저장
             // eslint-disable-next-line no-underscore-dangle
             recorder.chunks = chunks;
             setMediaRecorder(recorder);
@@ -321,10 +306,9 @@ You are an expert OPIC coach. Generate 20 personalized, OPIC-style interview que
             }
             const audioBlob = new Blob(parts, { type });
 
-            // 너무 작은 파일 방지
             if (audioBlob.size < 1024) {
                 setLoading(false);
-                toast.error("녹음 길이가 너무 짧아요. 다시 시도해줘!");
+                toast.error("녹음 길이가 너무 짧아요. 다시 시도해주세요:)");
                 return;
             }
 
@@ -345,7 +329,7 @@ You are an expert OPIC coach. Generate 20 personalized, OPIC-style interview que
                 else toast.error("음성 인식 결과가 비어 있어요.");
             } catch (e) {
                 console.error("Transcription error:", e);
-                toast.error("음성 인식에 실패했어요. 네트워크/서버 상태를 확인해줘!");
+                toast.error("음성 인식에 실패했어요. 네트워크/서버 상태를 확인해주세요!");
             } finally {
                 setLoading(false);
             }
@@ -425,11 +409,9 @@ Prompt: ${question}
             <div style={{ position: "relative", width: 360, height: 360, marginTop: 16 }}>
                 <video
                     ref={videoRef}
-                    src="/avatar.mp4" // public/avatar.mp4
+                    src="/avatar.mp4"
                     muted
                     playsInline
-                    autoPlay
-                    loop
                     preload="auto"
                     style={{
                         position: "absolute",
