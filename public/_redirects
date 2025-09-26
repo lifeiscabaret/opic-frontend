@@ -1,1 +1,5 @@
-/* /index.html 200
+/avatar.mp4      /avatar.mp4      200
+/*.mp4           /:splat.mp4      200
+/*.webm          /:splat.webm     200
+/*.mp3           /:splat.mp3      200
+/*               /index.html      200
