@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { toast } from "react-hot-toast";
+import avatarVideo from '../assets/avatar.mp4';
 import { API_BASE, LS, SURVEY } from "../App";
 
 const FALLBACK_QUESTIONS = [
@@ -266,7 +267,7 @@ Prompt: ${question}`.trim();
             <h2>{question}</h2>
             <h3>남은 시간: {timeLeft}초</h3>
             <div style={{ position: "relative", width: 360, height: 360, marginTop: 16 }}>
-                <video ref={videoRef} src="/avatar.mp4" muted playsInline loop preload="auto" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", borderRadius: 16, objectFit: "cover", background: "#000" }} />
+                <video ref={videoRef} src={avatarVideo} muted playsInline loop preload="auto" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", borderRadius: 16, objectFit: "cover", background: "#000" }} />
                 <audio ref={audioRef} />
                 {needVideoGesture && (
                     <button className="btn primary" style={{ position: "absolute", inset: 0, margin: "auto", height: 56, width: 220, backdropFilter: "blur(2px)", }}
