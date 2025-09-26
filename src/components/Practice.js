@@ -8,32 +8,27 @@ const FALLBACK_QUESTIONS = [
     "Describe your favorite place at home and how you usually spend time there.",
     "Talk about a hobby you picked up recently and how you got into it.",
 ];
-
 const TTS_VOICE = "shimmer";
 
+const getRandomFallback = () => FALLBACK_QUESTIONS[Math.floor(Math.random() * FALLBACK_QUESTIONS.length)];
+
 function Practice({ setUi, setLoading, setLoadingText, setSavedHistory }) {
-    // UI state
-    const [question, setQuestion] = useState("");
+    const [question, setQuestion] = useState("Loading your first question...");
     const [timeLeft, setTimeLeft] = useState(60);
     const [timerRunning, setTimerRunning] = useState(false);
     const [isFinished, setIsFinished] = useState(false);
     const [memo, setMemo] = useState("");
     const [needVideoGesture, setNeedVideoGesture] = useState(false);
-
-    // Recording state
     const [mediaRecorder, setMediaRecorder] = useState(null);
     const [recMime, setRecMime] = useState("audio/webm");
     const [isRecording, setIsRecording] = useState(false);
     const [audioURL, setAudioURL] = useState("");
-
-    // Refs
     const videoRef = useRef(null);
     const audioRef = useRef(null);
     const pendingAudioUrlRef = useRef(null);
-
-    // Question bank
     const [questionBank, setQuestionBank] = useState([]);
     const [bankLoading, setBankLoading] = useState(false);
+    const isInitialLoad = useRef(true);
 
     const playAudioAndVideo = useCallback(async (audioUrl) => {
         const audio = audioRef.current;
@@ -43,37 +38,46 @@ function Practice({ setUi, setLoading, setLoadingText, setSavedHistory }) {
         audio.src = audioUrl;
         audio.load();
 
+        const playMedia = async () => {
+            try {
+                video.currentTime = 0;
+                await Promise.all([video.play(), audio.play()]);
+                setNeedVideoGesture(false);
+            } catch (error) {
+                console.warn("Autoplay was prevented:", error);
+                pendingAudioUrlRef.current = audioUrl;
+                setNeedVideoGesture(true);
+                video.play().catch(e => console.warn("Muted video also failed to play:", e));
+            }
+        };
+
+        if (video.readyState >= 3) {
+            playMedia();
+        } else {
+            video.addEventListener('canplay', playMedia, { once: true });
+        }
+
         audio.onended = () => {
             video.pause();
             setTimeLeft(60);
             setTimerRunning(true);
         };
-
-        video.currentTime = 0;
-
-        try {
-            await Promise.all([video.play(), audio.play()]);
-            setNeedVideoGesture(false);
-        } catch (error) {
-            console.error("Autoplay was prevented:", error);
-            pendingAudioUrlRef.current = audioUrl;
-            setNeedVideoGesture(true);
-            video.play().catch(e => console.error("Muted video also failed to play:", e));
-        }
     }, []);
 
     const fetchQuestionBatch = useCallback(async () => {
-        const level = localStorage.getItem(LS.level) || "IH–AL";
-        const role = localStorage.getItem(LS.role) || "";
-        const residence = localStorage.getItem(LS.residence) || "";
-        const recentCourse = localStorage.getItem(LS.recentCourse) || "";
-        const selectedTopics = JSON.parse(localStorage.getItem(LS.topics) || "[]");
+        setBankLoading(true);
+        try {
+            const level = localStorage.getItem(LS.level) || "IH–AL";
+            const role = localStorage.getItem(LS.role) || "";
+            const residence = localStorage.getItem(LS.residence) || "";
+            const recentCourse = localStorage.getItem(LS.recentCourse) || "";
+            const selectedTopics = JSON.parse(localStorage.getItem(LS.topics) || "[]");
 
-        const topicLabels = SURVEY.topics
-            .filter(t => selectedTopics.includes(t.key))
-            .map(t => t.label);
+            const topicLabels = SURVEY.topics
+                .filter(t => selectedTopics.includes(t.key))
+                .map(t => t.label);
 
-        const prompt = `
+            const prompt = `
 You are an expert OPIC coach. Generate 20 personalized, OPIC-style interview questions in English based on the user's profile.
 - Return ONLY a valid JSON array of strings. No extra text or commentary.
 - Each question: 14-22 words, single sentence, natural spoken style.
@@ -81,8 +85,6 @@ You are an expert OPIC coach. Generate 20 personalized, OPIC-style interview que
 - Reference Profile: Level: ${level}, Role: ${role}, Residence: ${residence}, Course: ${recentCourse}.
 `.trim();
 
-        try {
-            setBankLoading(true);
             const res = await fetch(`${API_BASE}/ask`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -92,20 +94,20 @@ You are an expert OPIC coach. Generate 20 personalized, OPIC-style interview que
             const data = await res.json();
             const raw = data?.answer || "";
             const match = raw.match(/\[.*\]/s);
-            let arr = [];
-            if (match) {
-                try { arr = JSON.parse(match[0]); } catch { arr = []; }
-            }
+            let arr = match ? JSON.parse(match[0]) : [];
             if (!Array.isArray(arr) || !arr.length) arr = FALLBACK_QUESTIONS;
             setQuestionBank(prev => [...prev, ...arr.filter(Boolean)]);
+        } catch (e) {
+            console.error("fetchQuestionBatch failed:", e);
         } finally {
             setBankLoading(false);
         }
     }, []);
 
-    const runOne = useCallback(async () => {
+    const runOne = useCallback(async (isInitial = false) => {
         setLoadingText("AI가 맞춤형 질문을 생성중입니다...");
-        setLoading(true);
+        if (!isInitial) setLoading(true);
+
         setTimeLeft(60);
         setTimerRunning(false);
         setIsFinished(false);
@@ -115,50 +117,49 @@ You are an expert OPIC coach. Generate 20 personalized, OPIC-style interview que
 
         try {
             let nextQuestion;
-            if (questionBank.length > 0) {
-                nextQuestion = questionBank[0];
-                setQuestion(nextQuestion);
-                setQuestionBank(prev => prev.slice(1));
+            if (isInitial) {
+                nextQuestion = getRandomFallback();
+                fetchQuestionBatch();
             } else {
-                await fetchQuestionBatch();
-                const fetchedBank = await new Promise(resolve => {
-                    setQuestionBank(currentBank => {
-                        resolve(currentBank);
-                        return currentBank;
-                    });
-                });
-                nextQuestion = fetchedBank[0] || FALLBACK_QUESTIONS[Math.floor(Math.random() * FALLBACK_QUESTIONS.length)];
-                setQuestion(nextQuestion);
-                setQuestionBank(prev => prev.slice(1));
+                if (questionBank.length > 0) {
+                    nextQuestion = questionBank[0];
+                    setQuestionBank(prev => prev.slice(1));
+                    if (questionBank.length < 5 && !bankLoading) {
+                        fetchQuestionBatch();
+                    }
+                } else {
+                    nextQuestion = getRandomFallback();
+                    if (!bankLoading) fetchQuestionBatch();
+                }
             }
 
+            setQuestion(nextQuestion);
+
             const res = await fetch(`${API_BASE}/tts`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
+                method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ text: nextQuestion, voice: TTS_VOICE }),
             });
-
             if (!res.ok) throw new Error("TTS request failed");
+
             const audioBlob = await res.blob();
             const audioUrl = URL.createObjectURL(audioBlob);
             await playAudioAndVideo(audioUrl);
 
         } catch (e) {
             console.error("runOne failed", e);
-            toast.error("오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+            toast.error("질문을 생성하는 데 실패했습니다. Fallback 질문으로 시작합니다.");
+            setQuestion(getRandomFallback());
         } finally {
-            setLoading(false);
-            if (questionBank.length < 5 && !bankLoading) {
-                fetchQuestionBatch();
-            }
+            if (!isInitial) setLoading(false);
         }
-    }, [bankLoading, fetchQuestionBatch, playAudioAndVideo, questionBank, setLoading, setLoadingText]);
-
+    }, [questionBank, bankLoading, fetchQuestionBatch, playAudioAndVideo, setLoading, setLoadingText]);
 
     useEffect(() => {
-        runOne();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+        if (isInitialLoad.current) {
+            runOne(true);
+            isInitialLoad.current = false;
+        }
+    }, [runOne]);
 
     useEffect(() => {
         if (!timerRunning) return;
@@ -273,9 +274,7 @@ Prompt: ${question}`.trim();
                     <button className="btn primary" style={{ position: "absolute", inset: 0, margin: "auto", height: 56, width: 220, backdropFilter: "blur(2px)", }}
                         onClick={async () => {
                             const url = pendingAudioUrlRef.current;
-                            if (url) {
-                                await playAudioAndVideo(url);
-                            }
+                            if (url) { await playAudioAndVideo(url); }
                         }}>
                         ▶ 아바타 재생하기
                     </button>
@@ -295,7 +294,7 @@ Prompt: ${question}`.trim();
                 </button>
             )}
             {audioURL && <div style={{ marginTop: 12 }}><audio controls src={audioURL} /></div>}
-            <button onClick={runOne} disabled={bankLoading} style={{ marginTop: 16 }}>
+            <button onClick={() => runOne(false)} disabled={bankLoading} style={{ marginTop: 16 }}>
                 <i className="fa-solid fa-shuffle" aria-hidden="true"></i>{" "}
                 {bankLoading ? "새 질문 로딩…" : "다른 질문 받기"}
             </button>
