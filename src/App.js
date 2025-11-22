@@ -1,26 +1,23 @@
-import { useEffect, useState } from "react";
+// src/App.js
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
-<<<<<<< Updated upstream
-import { Toaster } from "react-hot-toast";
-=======
 import "@fortawesome/fontawesome-free/css/all.min.css";
 import Review from "./components/Review";
->>>>>>> Stashed changes
 
-// 컴포넌트 임포트
-import Survey from "./components/Survey";
-import Practice from "./components/Practice";
-import Review from "./components/Review";
-import LoadingOverlay from "./components/LoadingOverlay";
-import ScrollButtons from "./components/ScrollButtons";
-
+/* ====================== 환경 ====================== */
 export const API_BASE =
-  process.env.REACT_APP_API_BASE_URL || "http://localhost:8080";
+  process.env.REACT_APP_API_BASE_URL || "https://opic-backend.onrender.com";
+const IMAGE_URL =
+  process.env.REACT_APP_AVATAR_IMAGE_URL ||
+  `${window.location.origin}/avatar.png`;
 
-// 프로덕션(API_BASE가 /api로 끝남)과 로컬(그렇지 않을 수 있음) 모두에서 동작하도록 헬스체크 URL 보정
-const HEALTH_URL =
-  (API_BASE.endsWith("/api") ? API_BASE.slice(0, -4) : API_BASE) + "/health";
+/* =================== 디바이스 판별 (모바일) =================== */
+// navigator 미정의(no-undef) 워닝 방지
+const IS_MOBILE =
+  typeof navigator !== "undefined" &&
+  /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
+/* =================== 로컬스토리지 키 =================== */
 export const LS = {
   level: "opic:level",
   role: "opic:role",
@@ -30,6 +27,7 @@ export const LS = {
   history: "opicHistory",
 };
 
+/* ====================== 설문 옵션 ====================== */
 export const SURVEY = {
   residenceOptions: [
     "개인 주택/아파트 단독 거주",
@@ -64,16 +62,64 @@ export const SURVEY = {
   ],
 };
 
+/* =============== 브라우저 TTS 폴백(onEnd 지원, 모바일에선 미사용) =============== */
+function playTTS(text, onEnd) {
+  try {
+    if (IS_MOBILE) return; // 모바일은 음성 완전 비활성화
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "en-US";
+    const voices = window.speechSynthesis.getVoices();
+    const preferred =
+      voices.find(
+        (v) =>
+          /en-?US/i.test(v.lang) &&
+          /female|Jenny|Google US English/i.test(v.name)
+      ) || voices.find((v) => /en-?US/i.test(v.lang)) || voices[0];
+    if (preferred) u.voice = preferred;
+    if (onEnd) u.onend = onEnd;
+    window.speechSynthesis.speak(u);
+  } catch (e) {
+    console.warn("TTS unavailable:", e?.message);
+  }
+}
+
+/* =============== 서버 TTS(여성 verse 우선, 모바일에선 미사용) =============== */
+async function fetchQuestionAudio(question) {
+  if (IS_MOBILE) return null; // 모바일은 음성 완전 비활성화
+  try {
+    const cacheKey = "opic:ttsCache:v2";
+    const cache = JSON.parse(localStorage.getItem(cacheKey) || "{}");
+    if (cache[question]) return cache[question];
+
+    const r = await fetch(`${API_BASE}/tts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: question, voice: "sage" }),
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const url = j?.audioUrl || null;
+    if (url) {
+      localStorage.setItem(
+        cacheKey,
+        JSON.stringify({ ...cache, [question]: url })
+      );
+    }
+    return url;
+  } catch (e) {
+    console.error("[/tts exception]", e);
+    return null;
+  }
+}
+
+// 프로덕션(API_BASE가 /api로 끝남)과 로컬(그렇지 않을 수 있음) 모두에서 동작하도록 헬스체크 URL 보정
+const HEALTH_URL =
+  (API_BASE.endsWith("/api") ? API_BASE.slice(0, -4) : API_BASE) + "/health";
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function App() {
-<<<<<<< Updated upstream
-  const [ui, setUi] = useState("start");
-  const [serverReady, setServerReady] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [loadingText, setLoadingText] = useState(
-    "AI가 맞춤형 질문을 생성중입니다..."
-=======
   /* =============== UI/공통 =============== */
   const [ui, setUi] = useState("start"); // start | survey | practice | review | history
   const [serverReady, setServerReady] = useState(false);
@@ -90,16 +136,22 @@ function App() {
   );
   const [selectedTopics, setSelectedTopics] = useState(
     JSON.parse(localStorage.getItem(LS.topics) || "[]")
->>>>>>> Stashed changes
   );
 
-  // Review 화면으로 전달할 상태
-  const [savedHistory, setSavedHistory] = useState([]);
+  /* =============== 연습 상태 =============== */
+  const [question, setQuestion] = useState("");
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [timerRunning, setTimerRunning] = useState(false);
 
-<<<<<<< Updated upstream
-  /* ── Wake up backend server ─────────────────────── */
-  const wakeBackend = async () => {
-=======
+  const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [recMime, setRecMime] = useState("audio/webm");
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioURL, setAudioURL] = useState("");
+  const [memo, setMemo] = useState("");
+  const [isFinished, setIsFinished] = useState(false);
+  const [savedHistory, setSavedHistory] = useState([]);
+  const [openAnswerIndex, setOpenAnswerIndex] = useState(null);
+
   /* =============== 질문 오디오(웹 전용) =============== */
   const [qAudioUrl, setQAudioUrl] = useState("");
   const [useTTS, setUseTTS] = useState(false);
@@ -120,9 +172,7 @@ function App() {
   const prevQuestionRef = useRef("");
 
   /* =============== 서버 깨우기 =============== */
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   async function wakeBackend() {
->>>>>>> Stashed changes
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     try {
@@ -134,7 +184,7 @@ function App() {
     } finally {
       clearTimeout(timeout);
     }
-  };
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -151,36 +201,6 @@ function App() {
     };
   }, []);
 
-<<<<<<< Updated upstream
-  const renderContent = () => {
-    switch (ui) {
-      case "survey":
-        return <Survey setUi={setUi} />;
-      case "practice":
-        return (
-          <Practice
-            setUi={setUi}
-            setLoading={setLoading}
-            setLoadingText={setLoadingText}
-            setSavedHistory={setSavedHistory}
-          />
-        );
-      case "review":
-        return (
-          <Review
-            setUi={setUi}
-            savedHistory={savedHistory}
-            setSavedHistory={setSavedHistory}
-          />
-        );
-      case "start":
-      default:
-        return (
-          <div className="start-screen">
-            <h1 className="start-title">OPIC</h1>
-            <p
-              className="start-subtitle"
-=======
   /* =============== 타이머 =============== */
   useEffect(() => {
     if (ui !== "practice" || !timerRunning) return;
@@ -817,47 +837,22 @@ ${q}
             <button
               type="button"
               className="btn-reset"
->>>>>>> Stashed changes
               onClick={() => setUi("survey")}
-              style={{ cursor: "pointer" }}
+              title="설문 다시하기"
             >
-<<<<<<< Updated upstream
-              Let’s start practice
-            </p>
-=======
               <i
                 className="fas fa-arrow-left icon-nudge"
                 aria-hidden="true"
               ></i>
               설문 다시하기
             </button>
->>>>>>> Stashed changes
           </div>
-        );
-    }
-  };
-
-  return (
-    <>
-      {/* Toast 알림을 위한 컨테이너 */}
-      <Toaster position="top-center" reverseOrder={false} />
-
-      <ScrollButtons ui={ui} savedHistory={savedHistory} />
-
-      {loading && <LoadingOverlay loadingText={loadingText} />}
-
-      {!serverReady && (
-        <div className="start-screen">
-          <h1 className="start-title">OPIC</h1>
-          <p className="start-subtitle">서버 깨우는 중…</p>
         </div>
-      )}
+        <LoadingOverlay />
+      </>
+    );
+  }
 
-<<<<<<< Updated upstream
-      {serverReady && renderContent()}
-    </>
-  );
-=======
   if (ui === "review") {
     return (
       <>
@@ -996,7 +991,6 @@ ${q}
   }
 
   return null;
->>>>>>> Stashed changes
 }
 
 export default App;
